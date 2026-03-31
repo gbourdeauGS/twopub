@@ -215,6 +215,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 .legend-dot.orange{background:rgba(224,122,48,0.25);border:1px solid rgba(224,122,48,0.5);}
 .legend-dot.green{background:rgba(45,204,112,0.25);border:1px solid rgba(45,204,112,0.5);}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -234,10 +235,12 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
     <button class="btn btn-secondary" onclick="importData()">↑ Import local</button>
     <button class="btn btn-secondary" onclick="exportData()">↓ Save local</button>
     <div style="width:1px;height:24px;background:var(--border2);margin:0 4px;"></div>
-    <div id="ghStatusDot" class="gh-status-dot" title="GitHub non configuré"></div>
-    <button class="btn btn-secondary" onclick="ghPull()" id="btnGhPull" title="Charger depuis GitHub">↓ GitHub</button>
-    <button class="btn btn-primary"  onclick="ghPush()" id="btnGhPush" title="Sauvegarder sur GitHub">↑ GitHub</button>
-    <button class="btn btn-secondary gh-cfg-btn" onclick="openGhConfig()" title="Configurer GitHub">⚙</button>
+    <div id="sbStatusDot" class="gh-status-dot" title="Non connecté"></div>
+    <span id="sbUserLabel" style="font-size:11px;color:var(--text3);font-family:var(--mono);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+    <button class="btn btn-secondary" onclick="sbPull()" id="btnSbPull" style="display:none">↓ Sync</button>
+    <button class="btn btn-primary"   onclick="sbPush()" id="btnSbPush" style="display:none">↑ Sync</button>
+    <button class="btn btn-secondary" onclick="sbSignOut()" id="btnSbOut" style="display:none">Déconnexion</button>
+    <button class="btn btn-primary"   onclick="sbSignIn()" id="btnSbIn">Se connecter</button>
   </div>
 </header>
 
@@ -1277,131 +1280,109 @@ function importData(){ document.getElementById('jsonImporter').click(); }
 function handleJsonImport(ev){ const f=ev.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=e=>{ try{ const imp=JSON.parse(e.target.result); if(imp.projects!==undefined){ state={...state,...imp}; saveState(); renderTimesheet(); toast('Données importées'); } else toast('Format invalide','error'); }catch{ toast('Erreur import','error'); } }; r.readAsText(f); ev.target.value=''; }
 
 // ══════════════════════════════════════════════════
-// GITHUB SYNC
+// SUPABASE
 // ══════════════════════════════════════════════════
-const GH_CFG_KEY='temps_gh_config';
+const SB_URL = 'https://irwbnzwsyzzkjvrarekc.supabase.co';
+const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlyd2JuendzeXp6a2p2cmFyZWtjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ5NzM2NTksImV4cCI6MjA5MDU0OTY1OX0.adjQkyy0yMlH06NhORu078Z-8Tw4VA2UU61NTIPc9Hc';
+const _sb = supabase.createClient(SB_URL, SB_ANON);
 
-function getGhConfig(){
-  try{ return JSON.parse(localStorage.getItem(GH_CFG_KEY)||'null'); }catch{ return null; }
-}
-function saveGhConfigToStorage(cfg){
-  localStorage.setItem(GH_CFG_KEY, JSON.stringify(cfg));
-}
+let _sbUser = null;
 
-function openGhConfig(){
-  const cfg=getGhConfig();
-  if(cfg){
-    document.getElementById('ghToken').value=cfg.token||'';
-    document.getElementById('ghRepo').value=cfg.repo||'gbourdeauGS/twopub';
-    document.getElementById('ghFile').value=cfg.file||'saves/temps-2026.json';
-  }
-  document.getElementById('ghConfigError').textContent='';
-  openModal('modalGhConfig');
-}
+// ── Auth ──
+async function sbInit(){
+  // Handle OAuth callback (hash fragment)
+  const { data:{ session } } = await _sb.auth.getSession();
+  if(session) { _sbUser = session.user; sbUpdateUI(); await sbPull(); }
+  else sbUpdateUI();
 
-function saveGhConfig(){
-  const token=document.getElementById('ghToken').value.trim();
-  const repo=document.getElementById('ghRepo').value.trim();
-  const file=document.getElementById('ghFile').value.trim();
-  if(!token||!repo||!file){
-    document.getElementById('ghConfigError').textContent='Tous les champs sont requis.';
-    return;
-  }
-  saveGhConfigToStorage({token,repo,file});
-  closeModal('modalGhConfig');
-  updateGhStatusDot();
-  toast('Configuration GitHub enregistrée');
-}
-
-function updateGhStatusDot(){
-  const dot=document.getElementById('ghStatusDot');
-  const cfg=getGhConfig();
-  if(!cfg||!cfg.token){ dot.className='gh-status-dot'; dot.title='GitHub non configuré — cliquez ⚙ pour configurer'; }
-  else { dot.className='gh-status-dot ok'; dot.title=`GitHub configuré — ${cfg.repo} / ${cfg.file}`; }
-}
-
-async function ghApiGet(cfg, path){
-  const res=await fetch(`https://api.github.com/repos/${cfg.repo}/contents/${path}`,{
-    headers:{'Authorization':`token ${cfg.token}`,'Accept':'application/vnd.github.v3+json'}
+  _sb.auth.onAuthStateChange((_event, session) => {
+    _sbUser = session?.user || null;
+    sbUpdateUI();
   });
-  if(!res.ok) throw new Error(`GitHub API ${res.status}: ${res.statusText}`);
-  return res.json();
 }
 
-async function ghApiPut(cfg, path, content, sha){
-  const body={
-    message:`Temps 2026 — sauvegarde ${new Date().toLocaleString('fr-FR')}`,
-    content: btoa(unescape(encodeURIComponent(content))),
-    ...(sha?{sha}:{})
-  };
-  const res=await fetch(`https://api.github.com/repos/${cfg.repo}/contents/${path}`,{
-    method:'PUT',
-    headers:{'Authorization':`token ${cfg.token}`,'Accept':'application/vnd.github.v3+json','Content-Type':'application/json'},
-    body:JSON.stringify(body)
+async function sbSignIn(){
+  const { error } = await _sb.auth.signInWithOAuth({
+    provider: 'github',
+    options: { redirectTo: window.location.href.split('#')[0] }
   });
-  if(!res.ok){
-    const err=await res.json().catch(()=>({}));
-    throw new Error(`GitHub API ${res.status}: ${err.message||res.statusText}`);
-  }
-  return res.json();
+  if(error) toast('Erreur connexion: '+error.message, 'error');
 }
 
-async function ghPush(){
-  const cfg=getGhConfig();
-  if(!cfg||!cfg.token){ toast('GitHub non configuré','warn'); openGhConfig(); return; }
-  const dot=document.getElementById('ghStatusDot');
-  dot.className='gh-status-dot syncing'; dot.title='Sauvegarde en cours…';
-  try{
-    // Try to get current SHA (file might not exist yet)
-    let sha=null;
-    try{ const existing=await ghApiGet(cfg,cfg.file); sha=existing.sha; }catch(e){ /* file doesn't exist yet, ok */ }
-    const json=JSON.stringify(state,null,2);
-    await ghApiPut(cfg, cfg.file, json, sha);
-    dot.className='gh-status-dot ok'; dot.title=`Dernière sync: ${new Date().toLocaleTimeString('fr-FR')}`;
-    toast('✓ Sauvegardé sur GitHub');
-  }catch(e){
-    dot.className='gh-status-dot err'; dot.title=`Erreur: ${e.message}`;
-    toast(`Erreur GitHub: ${e.message}`,'error');
-  }
+async function sbSignOut(){
+  await _sb.auth.signOut();
+  _sbUser = null;
+  sbUpdateUI();
+  toast('Déconnecté');
 }
 
-async function ghPull(){
-  const cfg=getGhConfig();
-  if(!cfg||!cfg.token){ toast('GitHub non configuré','warn'); openGhConfig(); return; }
-  const dot=document.getElementById('ghStatusDot');
-  dot.className='gh-status-dot syncing'; dot.title='Chargement en cours…';
-  try{
-    const data=await ghApiGet(cfg,cfg.file);
-    const json=decodeURIComponent(escape(atob(data.content.replace(/
-/g,''))));
-    const imp=JSON.parse(json);
-    if(imp.projects===undefined) throw new Error('Format de fichier invalide');
-    state={...state,...imp};
-    saveState();
-    renderTimesheet();
-    dot.className='gh-status-dot ok'; dot.title=`Chargé depuis GitHub: ${new Date().toLocaleTimeString('fr-FR')}`;
-    toast('✓ Données chargées depuis GitHub');
-  }catch(e){
-    dot.className='gh-status-dot err'; dot.title=`Erreur: ${e.message}`;
-    toast(`Erreur GitHub: ${e.message}`,'error');
+function sbUpdateUI(){
+  const dot = document.getElementById('sbStatusDot');
+  const lbl = document.getElementById('sbUserLabel');
+  const btnIn  = document.getElementById('btnSbIn');
+  const btnOut = document.getElementById('btnSbOut');
+  const btnPush = document.getElementById('btnSbPush');
+  const btnPull = document.getElementById('btnSbPull');
+  if(_sbUser){
+    dot.className = 'gh-status-dot ok';
+    dot.title = 'Connecté: ' + (_sbUser.user_metadata?.user_name || _sbUser.email);
+    lbl.textContent = _sbUser.user_metadata?.user_name || _sbUser.email;
+    btnIn.style.display  = 'none';
+    btnOut.style.display = '';
+    btnPush.style.display = '';
+    btnPull.style.display = '';
+  } else {
+    dot.className = 'gh-status-dot';
+    dot.title = 'Non connecté';
+    lbl.textContent = '';
+    btnIn.style.display  = '';
+    btnOut.style.display = 'none';
+    btnPush.style.display = 'none';
+    btnPull.style.display = 'none';
   }
 }
 
-async function ghTestConnection(){
-  const token=document.getElementById('ghToken').value.trim();
-  const repo=document.getElementById('ghRepo').value.trim();
-  const errEl=document.getElementById('ghConfigError');
-  if(!token||!repo){ errEl.textContent='Token et repo requis pour tester.'; return; }
-  errEl.textContent='Test en cours…';
+// ── Push (save to Supabase) ──
+async function sbPush(){
+  if(!_sbUser){ toast('Non connecté','warn'); return; }
+  const dot = document.getElementById('sbStatusDot');
+  dot.className = 'gh-status-dot syncing';
   try{
-    const res=await fetch(`https://api.github.com/repos/${repo}`,{
-      headers:{'Authorization':`token ${token}`,'Accept':'application/vnd.github.v3+json'}
-    });
-    if(res.status===200){ errEl.style.color='var(--green)'; errEl.textContent='✓ Connexion réussie !'; }
-    else if(res.status===404){ errEl.style.color='var(--red)'; errEl.textContent='Repo introuvable — vérifiez le nom.'; }
-    else if(res.status===401){ errEl.style.color='var(--red)'; errEl.textContent='Token invalide ou expiré.'; }
-    else { errEl.style.color='var(--red)'; errEl.textContent=`Erreur ${res.status}`; }
-  }catch(e){ errEl.style.color='var(--red)'; errEl.textContent=`Erreur réseau: ${e.message}`; }
+    const payload = { user_id: _sbUser.id, data: state, updated_at: new Date().toISOString() };
+    const { error } = await _sb.from('saves').upsert(payload, { onConflict: 'user_id' });
+    if(error) throw error;
+    dot.className = 'gh-status-dot ok';
+    dot.title = 'Sauvegardé: ' + new Date().toLocaleTimeString('fr-FR');
+    toast('✓ Sauvegardé sur Supabase');
+  } catch(e){
+    dot.className = 'gh-status-dot err';
+    toast('Erreur Supabase: ' + e.message, 'error');
+  }
+}
+
+// ── Pull (load from Supabase) ──
+async function sbPull(){
+  if(!_sbUser){ toast('Non connecté','warn'); return; }
+  const dot = document.getElementById('sbStatusDot');
+  dot.className = 'gh-status-dot syncing';
+  try{
+    const { data, error } = await _sb.from('saves').select('data').eq('user_id', _sbUser.id).maybeSingle();
+    if(error) throw error;
+    if(data?.data){
+      state = {...state, ...data.data};
+      saveState();
+      renderTimesheet();
+      dot.className = 'gh-status-dot ok';
+      dot.title = 'Chargé: ' + new Date().toLocaleTimeString('fr-FR');
+      toast('✓ Données chargées depuis Supabase');
+    } else {
+      dot.className = 'gh-status-dot ok';
+      toast('Aucune donnée sur Supabase — première utilisation', 'warn');
+    }
+  } catch(e){
+    dot.className = 'gh-status-dot err';
+    toast('Erreur Supabase: ' + e.message, 'error');
+  }
 }
 
 // ══════════════════════════════════════════════════
@@ -1464,45 +1445,13 @@ function init(){
   state.projects.forEach(p=>{ if(!p.clientName&&p.client){p.clientName=p.client;delete p.client;} if(p.master===undefined) p.master=''; });
   if(!state.monthProjects) state.monthProjects={};
   saveState();
-  updateGhStatusDot();
   renderTimesheet();
+  sbInit();
 }
 init();
 </script>
 
-<!-- MODAL GITHUB CONFIG -->
-<div class="modal-overlay" id="modalGhConfig">
-  <div class="modal">
-    <div class="modal-header">
-      <span class="modal-title">Configuration GitHub</span>
-      <button class="modal-close" onclick="closeModal('modalGhConfig')">×</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-group">
-        <label class="form-label">Personal Access Token</label>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:8px">
-          GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)<br>
-          Droits requis : <code>repo</code>
-        </div>
-        <input class="form-input" id="ghToken" type="password" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Repo (owner/nom)</label>
-        <input class="form-input" id="ghRepo" type="text" placeholder="gbourdeauGS/twopub" value="gbourdeauGS/twopub">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Fichier de sauvegarde</label>
-        <input class="form-input" id="ghFile" type="text" placeholder="saves/temps-2026.json" value="saves/temps-2026.json">
-      </div>
-      <div id="ghConfigError" style="font-size:12px;color:var(--red);min-height:16px;margin-top:4px;"></div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeModal('modalGhConfig')">Annuler</button>
-      <button class="btn btn-secondary" onclick="ghTestConnection()">Tester la connexion</button>
-      <button class="btn btn-primary" onclick="saveGhConfig()">Enregistrer</button>
-    </div>
-  </div>
-</div>
+
 
 </body>
 </html>
