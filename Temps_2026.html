@@ -230,17 +230,12 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
     <button class="nav-btn" onclick="showView('clients',this)">Clients</button>
     <button class="nav-btn" onclick="showView('dashboard',this)">Dashboard</button>
     <button class="nav-btn" onclick="showView('export',this)">Export</button>
+    <button class="nav-btn" onclick="showView('reglages',this)">Réglages</button>
   </nav>
   <div class="header-right">
-    <button class="btn btn-secondary" onclick="importData()">↑ Import local</button>
-    <button class="btn btn-secondary" onclick="exportData()">↓ Save local</button>
-    <div style="width:1px;height:24px;background:var(--border2);margin:0 4px;"></div>
     <div id="sbStatusDot" class="gh-status-dot" title="Non connecté"></div>
     <span id="sbUserLabel" style="font-size:11px;color:var(--text3);font-family:var(--mono);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
-    <button class="btn btn-secondary" onclick="sbPull()" id="btnSbPull" style="display:none">↓ Sync</button>
-    <button class="btn btn-primary"   onclick="sbPush()" id="btnSbPush" style="display:none">↑ Sync</button>
-    <button class="btn btn-secondary" onclick="sbSignOut()" id="btnSbOut" style="display:none">Déconnexion</button>
-    <button class="btn btn-primary"   onclick="sbSignIn()" id="btnSbIn">Se connecter</button>
+    <button class="btn btn-primary" onclick="sbSignIn()" id="btnSbIn">Se connecter</button>
   </div>
 </header>
 
@@ -488,7 +483,7 @@ function showView(name, btn){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('view-'+name).classList.add('active');
   if(btn) btn.classList.add('active');
-  ({saisie:renderTimesheet,projets:renderProjects,clients:renderClients,dashboard:renderDashboard,export:renderExport})[name]?.();
+  ({saisie:renderTimesheet,projets:renderProjects,clients:renderClients,dashboard:renderDashboard,export:renderExport,reglages:updateReglagesView})[name]?.();
 }
 
 function changeMonth(d){
@@ -804,6 +799,7 @@ function onTI(input){
   updateDayTotalCol(day);
   updateWeekTotalCol(day);
   updateStats();
+  sbAutoSync();
 }
 
 function updateWeekTotalCol(day){
@@ -1340,6 +1336,7 @@ function sbUpdateUI(){
     btnPush.style.display = 'none';
     btnPull.style.display = 'none';
   }
+  updateReglagesView();
 }
 
 // ── Push (save to Supabase) ──
@@ -1382,6 +1379,38 @@ async function sbPull(){
   } catch(e){
     dot.className = 'gh-status-dot err';
     toast('Erreur Supabase: ' + e.message, 'error');
+  }
+}
+
+// ── Auto-sync (debounced) ──
+let _sbAutoSyncTimer = null;
+function sbAutoSync(){
+  if(!_sbUser) return;
+  clearTimeout(_sbAutoSyncTimer);
+  const dot = document.getElementById('sbStatusDot');
+  dot.className = 'gh-status-dot syncing';
+  _sbAutoSyncTimer = setTimeout(async ()=>{
+    await sbPush();
+    updateReglagesView();
+  }, 4000);
+}
+
+function updateReglagesView(){
+  const connEl = document.getElementById('rg-account-connected');
+  const discEl = document.getElementById('rg-account-disconnected');
+  if(!connEl) return;
+  if(_sbUser){
+    connEl.style.display='';
+    discEl.style.display='none';
+    document.getElementById('rg-username').textContent = _sbUser.user_metadata?.user_name || _sbUser.email || '';
+    document.getElementById('rg-email').textContent = _sbUser.email || '';
+    const dot2 = document.getElementById('sbStatusDot2');
+    if(dot2) dot2.className='gh-status-dot ok';
+    const lastSync = document.getElementById('rg-last-sync');
+    if(lastSync) lastSync.textContent = 'Dernière sync : ' + new Date().toLocaleTimeString('fr-FR');
+  } else {
+    connEl.style.display='none';
+    discEl.style.display='';
   }
 }
 
@@ -1452,6 +1481,78 @@ init();
 </script>
 
 
+
+<!-- RÉGLAGES -->
+<div class="view" id="view-reglages">
+  <div style="max-width:600px;margin:0 auto;display:flex;flex-direction:column;gap:20px;">
+
+    <!-- Compte -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 32px;box-shadow:var(--shadow-sm);">
+      <div style="font-family:var(--display);font-size:16px;font-weight:800;color:var(--text);margin-bottom:4px;letter-spacing:-0.3px;">Compte</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:20px;">Connexion et synchronisation Supabase</div>
+      <div id="rg-account-connected" style="display:none">
+        <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;margin-bottom:16px;">
+          <div id="sbStatusDot2" class="gh-status-dot ok"></div>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600;color:var(--text)" id="rg-username"></div>
+            <div style="font-size:11px;color:var(--text3)" id="rg-email"></div>
+          </div>
+          <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--green);background:rgba(45,204,112,0.1);border:1px solid rgba(45,204,112,0.25);padding:3px 10px;border-radius:20px;">Connecté</span>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="sbPush()" style="flex:1">↑ Forcer la sauvegarde</button>
+          <button class="btn btn-secondary" onclick="sbPull()" style="flex:1">↓ Recharger depuis Supabase</button>
+          <button class="btn btn-secondary" onclick="sbSignOut()" style="flex:1;color:var(--red);">Déconnexion</button>
+        </div>
+        <div id="rg-last-sync" style="font-size:11px;color:var(--text3);margin-top:10px;text-align:right;font-family:var(--mono);"></div>
+      </div>
+      <div id="rg-account-disconnected">
+        <div style="font-size:13px;color:var(--text2);margin-bottom:16px;">Connectez-vous avec GitHub pour synchroniser vos données sur tous vos appareils.</div>
+        <button class="btn btn-primary" onclick="sbSignIn()" style="width:100%;justify-content:center;">Se connecter avec GitHub</button>
+      </div>
+    </div>
+
+    <!-- Sauvegarde locale -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 32px;box-shadow:var(--shadow-sm);">
+      <div style="font-family:var(--display);font-size:16px;font-weight:800;color:var(--text);margin-bottom:4px;letter-spacing:-0.3px;">Sauvegarde locale</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:20px;">Exporter ou importer vos données en fichier JSON</div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-primary" onclick="exportData()" style="flex:1;justify-content:center;">↓ Télécharger la sauvegarde</button>
+        <button class="btn btn-secondary" onclick="importData()" style="flex:1;justify-content:center;">↑ Importer un fichier</button>
+      </div>
+      <div style="margin-top:12px;font-size:11px;color:var(--text3);line-height:1.6;">
+        Le fichier exporté contient l'ensemble de vos données : projets, clients, temps saisis.<br>
+        L'import <strong style="color:var(--orange)">écrase</strong> les données actuelles du navigateur.
+      </div>
+    </div>
+
+    <!-- Auto-sync -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 32px;box-shadow:var(--shadow-sm);">
+      <div style="font-family:var(--display);font-size:16px;font-weight:800;color:var(--text);margin-bottom:4px;letter-spacing:-0.3px;">Synchronisation automatique</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:20px;">Sauvegarde sur Supabase après chaque modification</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text);">Auto-sync activée</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px;">Délai de 4 secondes après la dernière saisie</div>
+        </div>
+        <div id="rg-autosync-badge" style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--green);background:rgba(45,204,112,0.1);border:1px solid rgba(45,204,112,0.25);padding:3px 10px;border-radius:20px;">Active</div>
+      </div>
+    </div>
+
+    <!-- Infos -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 32px;box-shadow:var(--shadow-sm);">
+      <div style="font-family:var(--display);font-size:16px;font-weight:800;color:var(--text);margin-bottom:4px;letter-spacing:-0.3px;">À propos</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:16px;">Informations sur l'application</div>
+      <table style="width:100%;font-size:12px;border-collapse:collapse;">
+        <tr><td style="padding:6px 0;color:var(--text3);width:140px;">Application</td><td style="color:var(--text);font-weight:500;">Temps 2026 — Suivi mensuel</td></tr>
+        <tr><td style="padding:6px 0;color:var(--text3);">Version</td><td style="font-family:var(--mono);color:var(--accent);">temps_v3</td></tr>
+        <tr><td style="padding:6px 0;color:var(--text3);">Stockage local</td><td style="font-family:var(--mono);color:var(--text2);">localStorage · temps_v3</td></tr>
+        <tr><td style="padding:6px 0;color:var(--text3);">Stockage cloud</td><td style="font-family:var(--mono);color:var(--text2);">Supabase · table saves</td></tr>
+      </table>
+    </div>
+
+  </div>
+</div>
 
 </body>
 </html>
