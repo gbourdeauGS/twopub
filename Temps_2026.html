@@ -1,0 +1,1508 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Temps — Suivi mensuel</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Outfit:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#f4f4f0; --surface:#ffffff; --surface2:#f0f0ec; --surface3:#e8e8e4;
+  --border:#e0e0d8; --border2:#d0d0c8; --accent:#5b4fff; --accent2:#4a3fee;
+  --accent-dim:rgba(91,79,255,0.08); --accent-glow:rgba(91,79,255,0.15);
+  --text:#1a1a2e; --text2:#5a5a7a; --text3:#9a9ab0;
+  --red:#e05555; --orange:#e07a30; --blue:#5b4fff; --green:#2dcc70;
+  --yellow:#f5e642; --pink:#ff6b9d;
+  --radius:8px; --mono:'DM Mono',monospace; --sans:'Outfit',sans-serif; --display:'Space Grotesk',sans-serif;
+  --day-red:rgba(224,85,85,0.12); --day-orange:rgba(224,122,48,0.12); --day-green:rgba(45,204,112,0.14);
+  --shadow-sm:0 1px 3px rgba(26,26,46,0.08); --shadow:0 4px 16px rgba(26,26,46,0.10); --shadow-lg:0 12px 40px rgba(26,26,46,0.14);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13px;min-height:100vh;overflow-x:hidden;}
+
+.gh-status-dot{width:8px;height:8px;border-radius:50%;background:var(--text3);flex-shrink:0;transition:background 0.3s;}
+.gh-status-dot.ok{background:var(--green);}
+.gh-status-dot.err{background:var(--red);}
+.gh-status-dot.syncing{background:var(--orange);animation:pulse 1s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
+.gh-cfg-btn{padding:8px 10px !important;font-size:14px !important;}
+.app-header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 28px;display:flex;align-items:center;justify-content:space-between;height:64px;position:sticky;top:0;z-index:100;box-shadow:var(--shadow-sm);}
+.app-logo{display:flex;align-items:center;gap:10px;}
+.app-logo span{color:var(--text3);font-weight:400;font-size:12px;font-family:var(--mono);letter-spacing:0.3px;}
+.header-nav{display:flex;gap:2px;}
+.nav-btn{background:none;border:none;color:var(--text2);font-family:var(--sans);font-size:12px;font-weight:600;padding:7px 16px;border-radius:20px;cursor:pointer;transition:all 0.15s;text-transform:uppercase;letter-spacing:0.6px;}
+.nav-btn:hover{background:var(--surface2);color:var(--text);}
+.nav-btn.active{background:var(--accent);color:#fff;}
+.header-right{display:flex;gap:8px;align-items:center;} 
+
+.view{display:none;padding:24px;}
+.view.active{display:block;}
+
+.month-bar{display:flex;align-items:center;gap:12px;margin-bottom:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 20px;box-shadow:var(--shadow-sm);}
+.month-nav-btn{background:none;border:1px solid var(--border);color:var(--text3);width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;transition:all 0.15s;}
+.month-nav-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-dim);}
+.month-label{font-family:var(--display);font-weight:700;font-size:17px;color:var(--text);min-width:160px;text-align:center;letter-spacing:-0.3px;}
+.month-stats{margin-left:auto;display:flex;gap:24px;}
+.stat-item{display:flex;flex-direction:column;align-items:flex-end;}
+.stat-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;}
+.stat-value{font-size:15px;font-weight:700;color:var(--accent);font-family:var(--display);}
+.stat-value.warn{color:var(--orange);}
+.stat-value.ok{color:var(--green);}
+
+.grid-wrapper{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);box-shadow:var(--shadow);}
+.timesheet-table{border-collapse:collapse;width:max-content;min-width:100%;}
+.timesheet-table th{background:var(--surface2);font-family:var(--sans);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:0.7px;color:var(--text3);padding:9px 10px;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;position:sticky;top:0;z-index:10;}
+.timesheet-table th.day-header{text-align:center;min-width:44px;padding:4px 3px;line-height:1.3;}
+.timesheet-table th.day-header.weekend{color:var(--text3);}
+.timesheet-table th.day-header.today{color:var(--accent);}
+.day-cap{font-size:9px;color:var(--text3);display:block;margin-top:2px;}
+
+/* Sticky columns: entity(0) client(130) code(260) master(370) project(460) */
+.timesheet-table th.col-entity{min-width:130px;position:sticky;left:0;z-index:20;background:var(--surface2);}
+.timesheet-table th.col-client{min-width:130px;position:sticky;left:130px;z-index:20;background:var(--surface2);}
+.timesheet-table th.col-code{min-width:110px;position:sticky;left:260px;z-index:20;background:var(--surface2);}
+.timesheet-table th.col-master{min-width:90px;position:sticky;left:370px;z-index:20;background:var(--surface2);}
+.timesheet-table th.col-project{min-width:190px;position:sticky;left:460px;z-index:20;background:var(--surface2);}
+.timesheet-table th.col-total{min-width:65px;background:var(--surface3);color:var(--accent);}
+.group-header td{background:linear-gradient(90deg,var(--accent-dim),transparent);font-family:var(--sans);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--accent);padding:6px 12px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
+.timesheet-table td{border-right:1px solid var(--border);border-bottom:1px solid rgba(42,42,42,0.5);padding:0;}
+.timesheet-table td.col-entity{position:sticky;left:0;z-index:5;background:var(--surface);}
+.timesheet-table td.col-client{position:sticky;left:130px;z-index:5;background:var(--surface);}
+.timesheet-table td.col-code{position:sticky;left:260px;z-index:5;background:var(--surface);}
+.timesheet-table td.col-master{position:sticky;left:370px;z-index:5;background:var(--surface);}
+.timesheet-table td.col-project{position:sticky;left:460px;z-index:5;background:var(--surface);border-right:2px solid var(--border2);}
+.timesheet-table tr:hover td.col-entity,
+.timesheet-table tr:hover td.col-client,
+.timesheet-table tr:hover td.col-code,
+.timesheet-table tr:hover td.col-master,
+.timesheet-table tr:hover td.col-project{background:var(--surface2);}
+
+.cell-text{padding:7px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px;color:var(--text2);font-size:12px;}
+.cell-text.entity-text{font-size:11px;}
+.cell-text.client{color:var(--text);font-weight:500;}
+.cell-text.code{color:var(--text3);font-size:11px;}
+.cell-text.master{color:var(--text3);font-size:11px;font-style:italic;}
+.cell-text.project{color:var(--text);}
+.cell-text.absence-label{color:var(--orange);}
+
+.time-cell{text-align:center;position:relative;}
+.time-input{width:100%;height:32px;background:transparent;border:none;color:var(--text);font-family:var(--mono);font-size:12px;text-align:center;cursor:pointer;padding:0;transition:background 0.1s;}
+.time-input:hover{background:var(--surface2);}
+.time-input:focus{background:var(--accent-dim);color:var(--accent);outline:none;box-shadow:inset 0 0 0 2px var(--accent);border-radius:4px;}
+.time-input.has-value{color:var(--accent);font-weight:600;}
+.time-input.weekend{background:var(--surface2);}
+.time-input.weekend:hover{background:var(--surface3);}
+.time-input.absence-input.has-value{color:var(--orange);}
+.row-remove-btn{background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;padding:2px 5px;border-radius:4px;transition:all 0.15s;flex-shrink:0;line-height:1;margin-right:4px;}
+.row-remove-btn:hover{background:rgba(224,85,85,0.12);color:var(--red);}
+.row-remove-btn.row-remove-hasdata{color:var(--orange);}
+.row-remove-btn.row-remove-hasdata:hover{background:rgba(224,122,48,0.12);color:var(--orange);}
+.add-project-row td{padding:0;border-top:2px dashed var(--border);}
+.btn-add-project{width:100%;background:none;border:none;padding:10px 20px;color:var(--accent);font-family:var(--sans);font-size:12px;font-weight:600;cursor:pointer;text-align:left;letter-spacing:0.3px;transition:all 0.15s;}
+.btn-add-project:hover{background:var(--accent-dim);}
+.week-total-th{background:var(--surface3);text-align:center;font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;padding:4px 6px;border-left:2px solid var(--border2);min-width:52px;white-space:nowrap;}
+.week-total-cell{background:var(--surface2);text-align:center;padding:6px 6px;font-family:var(--display);font-size:12px;font-weight:700;color:var(--accent);border-left:2px solid var(--border2);white-space:nowrap;}
+.week-total-cell.empty{color:var(--text3);font-weight:400;}
+.week-total-cell.absence{color:var(--orange);}
+.time-input.locked{background:repeating-linear-gradient(45deg,rgba(0,0,0,0.03),rgba(0,0,0,0.03) 3px,transparent 3px,transparent 8px) !important;cursor:not-allowed;color:var(--text3) !important;opacity:0.5;}
+.time-input.locked:hover{background:repeating-linear-gradient(45deg,rgba(0,0,0,0.05),rgba(0,0,0,0.05) 3px,transparent 3px,transparent 8px) !important;}
+.time-cell.day-blocked{background:repeating-linear-gradient(45deg,rgba(0,0,0,0.025),rgba(0,0,0,0.025) 3px,transparent 3px,transparent 8px);}
+
+/* Day column background colors — applied on td.time-cell */
+.day-red .time-input:not(:focus){background:var(--day-red);}
+.day-orange .time-input:not(:focus){background:var(--day-orange);}
+.day-green .time-input:not(:focus){background:var(--day-green);}
+
+.total-cell{background:var(--surface2);text-align:center;padding:7px 10px;font-weight:700;font-size:13px;white-space:nowrap;font-family:var(--display);}
+.total-cell.has-value{color:var(--accent);}
+.total-cell.empty{color:var(--text3);}
+.total-cell.absence-total.has-value{color:var(--orange);}
+
+.day-total-row td{background:var(--surface3);border-top:2px solid var(--border);}
+.day-total-val{text-align:center;padding:4px 3px;font-size:11px;font-weight:500;}
+
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--radius);font-family:var(--mono);font-size:12px;cursor:pointer;border:none;transition:all 0.15s;}
+.btn-primary{background:var(--accent);color:#fff;font-weight:500;}
+.btn-primary:hover{background:var(--accent2);}
+.btn-secondary{background:var(--surface3);color:var(--text2);border:1px solid var(--border2);}
+.btn-secondary:hover{color:var(--text);border-color:var(--text3);}
+.btn-danger{background:rgba(255,77,77,0.1);color:var(--red);border:1px solid rgba(255,77,77,0.2);}
+.btn-danger:hover{background:rgba(255,77,77,0.2);}
+
+.projects-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;}
+.search-input{background:var(--surface);border:1.5px solid var(--border);border-radius:20px;color:var(--text);font-family:var(--mono);font-size:13px;padding:8px 18px;width:300px;transition:all 0.15s;box-shadow:var(--shadow-sm);}
+.search-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow);}
+.search-input::placeholder{color:var(--text3);}
+.projects-table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow);}
+.projects-table th{background:var(--surface2);font-family:var(--sans);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;color:var(--text3);padding:11px 14px;text-align:left;border-bottom:2px solid var(--border);}
+.projects-table td{padding:10px 14px;border-bottom:1px solid var(--border);color:var(--text);font-size:12px;}
+.projects-table tr:hover td{background:var(--accent-dim);}
+.code-badge{font-family:var(--mono);font-size:11px;color:var(--text2);background:var(--surface2);border:1px solid var(--border);padding:2px 8px;border-radius:6px;display:inline-block;}
+.master-badge{font-family:var(--mono);font-size:11px;color:var(--accent);background:var(--accent-dim);border:1px solid rgba(91,79,255,0.2);padding:2px 8px;border-radius:6px;display:inline-block;font-style:italic;}
+.entity-pill{font-size:10px;padding:3px 10px;border-radius:20px;border:1.5px solid;display:inline-block;white-space:nowrap;font-weight:600;font-family:var(--sans);}
+
+.modal-overlay{position:fixed;inset:0;background:rgba(26,26,46,0.5);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;z-index:200;}
+.modal-overlay.open{display:flex;}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;width:520px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 24px 80px rgba(26,26,46,0.2);animation:modalIn 0.2s ease;}
+@keyframes modalIn{from{opacity:0;transform:translateY(-16px) scale(0.98);}to{opacity:1;transform:translateY(0) scale(1);}}
+.modal-header{padding:20px 24px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.modal-title{font-family:var(--sans);font-weight:700;font-size:16px;}
+.modal-close{background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer;padding:2px 6px;border-radius:4px;transition:all 0.15s;}
+.modal-close:hover{background:var(--surface3);color:var(--text);}
+.modal-body{padding:20px 24px;}
+.modal-footer{padding:16px 24px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.form-group{margin-bottom:14px;}
+.form-label{display:block;font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;}
+.form-hint{font-size:10px;color:var(--text3);margin-top:3px;}
+.form-input,.form-select{width:100%;background:var(--surface2);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:13px;padding:10px 14px;transition:all 0.15s;}
+.form-input:focus,.form-select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow);background:var(--surface);}
+.form-select option{background:var(--surface);}
+.form-input[readonly]{color:var(--text3);}
+
+.dashboard-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:24px;}
+.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 22px;position:relative;overflow:hidden;box-shadow:var(--shadow-sm);transition:all 0.2s;}
+.kpi-card:hover{box-shadow:var(--shadow);transform:translateY(-2px);}
+.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--pink));}
+.kpi-label{font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--text3);margin-bottom:8px;}
+.kpi-value{font-family:var(--display);font-size:30px;font-weight:800;color:var(--text);line-height:1;letter-spacing:-1px;}
+.kpi-sub{font-size:11px;color:var(--text3);margin-top:5px;}
+.kpi-value.accent{color:var(--accent);}
+.kpi-value.warn{color:var(--orange);}
+.section-title{font-family:var(--display);font-size:14px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:12px;}
+.breakdown-table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:24px;box-shadow:var(--shadow-sm);}
+.breakdown-table th{background:var(--surface2);font-family:var(--sans);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;color:var(--text3);padding:10px 14px;text-align:left;border-bottom:2px solid var(--border);}
+.breakdown-table td{padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px;}
+.breakdown-table tr:hover td{background:var(--accent-dim);}
+.bar-cell{width:140px;}
+.bar-wrap{background:var(--surface3);border-radius:4px;height:6px;overflow:hidden;}
+.bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--pink));border-radius:4px;transition:width 0.5s ease;}
+
+.export-preview{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:20px;font-family:var(--mono);font-size:12px;color:var(--text2);line-height:1.8;white-space:pre;overflow-x:auto;max-height:400px;overflow-y:auto;}
+.export-tab{background:none;border:none;border-bottom:2px solid transparent;color:var(--text3);font-family:var(--sans);font-size:12px;font-weight:600;padding:10px 20px;cursor:pointer;transition:all 0.15s;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:-1px;}
+.export-tab:hover{color:var(--text2);}
+.export-tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.week-block{margin-bottom:16px;border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow-sm);}
+.week-block-header{background:var(--surface2);padding:12px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);}
+.week-block-title{font-family:var(--display);font-size:13px;font-weight:700;color:var(--text);letter-spacing:-0.2px;}
+.week-block-meta{font-size:11px;color:var(--text3);margin-top:2px;}
+.week-block-actions{display:flex;gap:8px;}
+.week-preview{background:var(--surface2);padding:14px 18px;font-family:var(--mono);font-size:12px;color:var(--text2);line-height:1.8;white-space:pre;overflow-x:auto;}
+.week-empty{padding:14px 18px;font-size:12px;color:var(--text3);font-style:italic;}
+.toast-container{position:fixed;bottom:24px;right:24px;z-index:999;display:flex;flex-direction:column;gap:8px;}
+.toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);padding:12px 18px;border-radius:10px;font-size:12px;color:var(--text);animation:toastIn 0.2s ease;box-shadow:var(--shadow-lg);font-family:var(--sans);font-weight:500;}
+.toast.error{border-left-color:var(--red);}
+.toast.warn{border-left-color:var(--orange);}
+@keyframes toastIn{from{opacity:0;transform:translateX(16px);}to{opacity:1;transform:translateX(0);}}
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-track{background:var(--surface2);}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+::-webkit-scrollbar-thumb:hover{background:var(--text3);}
+.empty-state{text-align:center;padding:60px 20px;color:var(--text3);}
+.empty-state .icon{font-size:40px;margin-bottom:12px;}
+.tag{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;font-family:var(--sans);}
+.tag-interne{background:rgba(91,79,255,0.08);color:var(--accent);border:1px solid rgba(91,79,255,0.2);}
+.tag-vendu{background:rgba(45,204,112,0.1);color:var(--green);border:1px solid rgba(45,204,112,0.25);}
+.tag-autre{background:var(--surface3);color:var(--text3);border:1px solid var(--border);}
+.collab-header{display:flex;align-items:center;gap:8px;margin-bottom:20px;padding:12px 20px;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-sm);}
+.collab-name-input{background:transparent;border:none;font-family:var(--display);font-weight:700;font-size:15px;color:var(--text);cursor:text;flex:1;}
+.collab-name-input:focus{outline:2px solid var(--accent);border-radius:4px;padding:0 4px;}
+.collab-label{font-size:11px;color:var(--text3);font-family:var(--sans);font-weight:500;}
+.legend{display:flex;gap:16px;margin-bottom:12px;align-items:center;flex-wrap:wrap;}
+.legend-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3);}
+.legend-dot{width:12px;height:12px;border-radius:2px;}
+.legend-dot.red{background:rgba(224,85,85,0.25);border:1px solid rgba(224,85,85,0.5);}
+.legend-dot.orange{background:rgba(224,122,48,0.25);border:1px solid rgba(224,122,48,0.5);}
+.legend-dot.green{background:rgba(45,204,112,0.25);border:1px solid rgba(45,204,112,0.5);}
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-logo">
+    <img src="https://cdn.prod.website-files.com/65a795ebdb778fdc1cdb37d4/664e0daf8695392b24a87f94_logo-digital-garden.svg" alt="Digital Garden" style="height:28px;">
+    <span>/ suivi mensuel</span>
+  </div>
+  <nav class="header-nav">
+    <button class="nav-btn active" onclick="showView('saisie',this)">Saisie</button>
+    <button class="nav-btn" onclick="showView('projets',this)">Projets</button>
+    <button class="nav-btn" onclick="showView('clients',this)">Clients</button>
+    <button class="nav-btn" onclick="showView('dashboard',this)">Dashboard</button>
+    <button class="nav-btn" onclick="showView('export',this)">Export</button>
+  </nav>
+  <div class="header-right">
+    <button class="btn btn-secondary" onclick="importData()">↑ Import local</button>
+    <button class="btn btn-secondary" onclick="exportData()">↓ Save local</button>
+    <div style="width:1px;height:24px;background:var(--border2);margin:0 4px;"></div>
+    <div id="ghStatusDot" class="gh-status-dot" title="GitHub non configuré"></div>
+    <button class="btn btn-secondary" onclick="ghPull()" id="btnGhPull" title="Charger depuis GitHub">↓ GitHub</button>
+    <button class="btn btn-primary"  onclick="ghPush()" id="btnGhPush" title="Sauvegarder sur GitHub">↑ GitHub</button>
+    <button class="btn btn-secondary gh-cfg-btn" onclick="openGhConfig()" title="Configurer GitHub">⚙</button>
+  </div>
+</header>
+
+<!-- SAISIE -->
+<div class="view active" id="view-saisie">
+  <div class="collab-header">
+    <span class="collab-label">Collaborateur :</span>
+    <input class="collab-name-input" id="collabName" type="text" placeholder="Nom Prénom" onchange="saveCollab()">
+  </div>
+  <div class="month-bar">
+    <button class="month-nav-btn" onclick="changeMonth(-1)">‹</button>
+    <div class="month-label" id="monthLabel">—</div>
+    <button class="month-nav-btn" onclick="changeMonth(1)">›</button>
+    <div class="month-stats">
+      <div class="stat-item"><span class="stat-label">Total saisi</span><span class="stat-value" id="statTotal">0h</span></div>
+      <div class="stat-item"><span class="stat-label">Capacité</span><span class="stat-value" id="statDays">—</span></div>
+      <div class="stat-item"><span class="stat-label">Reste à saisir</span><span class="stat-value" id="statRemaining">—</span></div>
+    </div>
+  </div>
+  <div class="legend">
+    <span style="font-size:11px;color:var(--text3)">Couleur / jour :</span>
+    <div class="legend-item"><div class="legend-dot red"></div>&lt; 50% des heures attendues</div>
+    <div class="legend-item"><div class="legend-dot orange"></div>50–99%</div>
+    <div class="legend-item"><div class="legend-dot green"></div>100% ✓</div>
+  </div>
+  <div class="grid-wrapper">
+    <table class="timesheet-table"><thead id="timesheetHead"></thead><tbody id="timesheetBody"></tbody></table>
+  </div>
+</div>
+
+<!-- PROJETS -->
+<div class="view" id="view-projets">
+  <div class="projects-toolbar">
+    <input type="text" class="search-input" id="projectSearch" placeholder="Rechercher client, code, projet…" oninput="filterProjects()">
+    <button class="btn btn-primary" onclick="openAddProject()">+ Nouveau projet</button>
+    <button class="btn btn-secondary" onclick="openImportProjects()">⇅ Importer liste</button>
+  </div>
+  <table class="projects-table">
+    <thead><tr><th>Entité factu.</th><th>Client</th><th>Code projet</th><th>Code maître</th><th>Projet</th><th>Catégorie</th><th style="width:90px">Actions</th></tr></thead>
+    <tbody id="projectsBody"></tbody>
+  </table>
+</div>
+
+<!-- CLIENTS -->
+<div class="view" id="view-clients">
+  <div class="projects-toolbar">
+    <button class="btn btn-primary" onclick="openAddClient()">+ Nouveau client</button>
+  </div>
+  <table class="projects-table">
+    <thead><tr><th>Nom du client</th><th>Entité de facturation</th><th style="width:90px">Actions</th></tr></thead>
+    <tbody id="clientsBody"></tbody>
+  </table>
+</div>
+
+<!-- DASHBOARD -->
+<div class="view" id="view-dashboard">
+  <div class="month-bar">
+    <button class="month-nav-btn" onclick="changeMonth(-1)">‹</button>
+    <div class="month-label" id="dashMonthLabel">—</div>
+    <button class="month-nav-btn" onclick="changeMonth(1)">›</button>
+  </div>
+  <div class="dashboard-grid" id="dashKpis"></div>
+  <div class="section-title">Répartition par client</div>
+  <table class="breakdown-table"><thead><tr><th>Client</th><th>Entité</th><th>Projet(s)</th><th>Heures</th><th class="bar-cell">Part</th></tr></thead><tbody id="dashBreakdownBody"></tbody></table>
+  <div class="section-title">Projets actifs ce mois</div>
+  <table class="breakdown-table"><thead><tr><th>Projet</th><th>Code</th><th>Code maître</th><th>Client</th><th>Heures</th></tr></thead><tbody id="dashProjectsBody"></tbody></table>
+</div>
+
+<!-- EXPORT -->
+<div class="view" id="view-export">
+  <div class="month-bar" style="margin-bottom:20px">
+    <button class="month-nav-btn" onclick="changeMonth(-1)">‹</button>
+    <div class="month-label" id="exportMonthLabel">—</div>
+    <button class="month-nav-btn" onclick="changeMonth(1)">›</button>
+  </div>
+
+  <div style="display:flex;gap:0;margin-bottom:20px;border-bottom:1px solid var(--border);">
+    <button class="export-tab active" id="tab-monthly" onclick="switchExportTab('monthly')">Export mensuel</button>
+    <button class="export-tab" id="tab-weekly" onclick="switchExportTab('weekly')">Export hebdomadaire</button>
+  </div>
+
+  <div id="panel-monthly">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:11px;color:var(--text3)">Format : DATE[tab]HEURE[tab][tab][tab]PROJET[tab][tab][tab]COLLABORATEUR[tab]CODE — Congés exclus. — Retours CRLF.</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="downloadTxt()">↓ Télécharger .txt</button>
+        <button class="btn btn-secondary" onclick="copyExport()">⎘ Copier</button>
+      </div>
+    </div>
+    <div class="export-preview" id="exportPreview">—</div>
+  </div>
+
+  <div id="panel-weekly" style="display:none">
+    <div style="font-size:11px;color:var(--text3);margin-bottom:16px">
+      Une ligne par projet actif sur la semaine. Date utilisée : <strong style="color:var(--text2)">dernier jour ouvré de la semaine</strong> dans le mois. Congés exclus.
+    </div>
+    <div id="weeklyBlocks"></div>
+    <div style="margin-top:20px">
+      <button class="btn btn-primary" onclick="downloadAllWeeks()">↓ Télécharger toutes les semaines (.txt)</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL ADD MONTH PROJECT -->
+<div class="modal-overlay" id="modalAddMonthProject">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">Ajouter un projet au mois</span><button class="modal-close" onclick="closeModal('modalAddMonthProject')">×</button></div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Rechercher un projet</label>
+        <input class="form-input" id="addMonthSearch" placeholder="Client, code ou nom de projet…" oninput="filterAddMonthList()" autocomplete="off">
+      </div>
+      <div id="addMonthList" style="max-height:340px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-top:4px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modalAddMonthProject')">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL PROJECT -->
+<div class="modal-overlay" id="modalProject">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title" id="modalProjectTitle">Nouveau projet</span><button class="modal-close" onclick="closeModal('modalProject')">×</button></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Client</label>
+          <select class="form-select" id="pClient" onchange="onClientChange()"><option value="">— Sélectionner —</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Entité de facturation</label>
+          <input class="form-input" id="pEntity" placeholder="Auto depuis client" readonly>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Code projet</label>
+          <input class="form-input" id="pCode" placeholder="ex: DGGSCO0257">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Code maître <span style="color:var(--text3)">(facultatif)</span></label>
+          <input class="form-input" id="pMaster" placeholder="ex: DGGUL0001">
+          <div class="form-hint">Regroupe plusieurs codes sous un code parent</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nom du projet</label>
+        <input class="form-input" id="pName" placeholder="ex: Cuisinons Plus Bio">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Catégorie</label>
+        <select class="form-select" id="pCategory">
+          <option value="vendu">Vendu (client)</option>
+          <option value="interne">Interne</option>
+          <option value="autre">Autre</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modalProject')">Annuler</button>
+      <button class="btn btn-primary" onclick="saveProject()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CLIENT -->
+<div class="modal-overlay" id="modalClient">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title" id="modalClientTitle">Nouveau client</span><button class="modal-close" onclick="closeModal('modalClient')">×</button></div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Nom du client</label>
+        <input class="form-input" id="cName" placeholder="ex: Agence Bio">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Entité de facturation</label>
+        <select class="form-select" id="cEntity">
+          <option value="Gulfstream Communication">Gulfstream Communication</option>
+          <option value="Digital Garden">Digital Garden</option>
+          <option value="Datagif">Datagif</option>
+          <option value="Clic Clac">Clic Clac</option>
+          <option value="Connect">Connect</option>
+          <option value="Gulfstream Activation">Gulfstream Activation</option>
+          <option value="Gulfstream RP">Gulfstream RP</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modalClient')">Annuler</button>
+      <button class="btn btn-primary" onclick="saveClient()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL IMPORT -->
+<div class="modal-overlay" id="modalImport">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">Importer des projets</span><button class="modal-close" onclick="closeModal('modalImport')">×</button></div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Format TSV (coller depuis Excel)</label>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px">Colonnes : Code • Client • Projet • Catégorie(opt) • Code_maître(opt)</div>
+        <textarea class="form-input" id="importTsv" rows="10" style="resize:vertical;line-height:1.6" placeholder="DGDG0362&#9;Digital Garden&#9;Sentinel&#9;interne&#10;DGGUL2919&#9;Ademe&#9;Pacte Industrie&#9;vendu"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modalImport')">Annuler</button>
+      <button class="btn btn-primary" onclick="importTsv()">Importer</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+<input type="file" id="jsonImporter" accept=".json" style="display:none" onchange="handleJsonImport(event)">
+
+<script>
+// ══════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════
+const STORAGE_KEY = 'temps_v3';
+const ENTITIES = ['Gulfstream Communication','Digital Garden','Clic Clac','Connect','Gulfstream Activation','Gulfstream RP'];
+const KEY_CONGES = '__CONGES__';
+const KEY_FERIES = '__FERIES__';
+
+let state = {
+  collaborateur: 'BOURDEAU Guillaume 2',
+  currentYear: new Date().getFullYear(),
+  currentMonth: new Date().getMonth(),
+  clients: [],
+  projects: [],       // master project list
+  monthProjects: {},  // "YYYY-MM" -> [pk, pk, ...] active project keys for that month
+  timeData: {}
+};
+
+function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(s) state={...state,...JSON.parse(s)}; }catch(e){} }
+function saveState(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){ toast('Erreur sauvegarde','error'); } }
+function saveCollab(){ state.collaborateur=document.getElementById('collabName').value; saveState(); }
+
+// ══════════════════════════════════════════════════
+// NAV
+// ══════════════════════════════════════════════════
+function showView(name, btn){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('view-'+name).classList.add('active');
+  if(btn) btn.classList.add('active');
+  ({saisie:renderTimesheet,projets:renderProjects,clients:renderClients,dashboard:renderDashboard,export:renderExport})[name]?.();
+}
+
+function changeMonth(d){
+  state.currentMonth+=d;
+  if(state.currentMonth>11){state.currentMonth=0;state.currentYear++;}
+  if(state.currentMonth<0){state.currentMonth=11;state.currentYear--;}
+  saveState();
+  const id=document.querySelector('.view.active')?.id;
+  if(id==='view-saisie') renderTimesheet();
+  if(id==='view-dashboard') renderDashboard();
+  if(id==='view-export') renderExport();
+}
+
+// ══════════════════════════════════════════════════
+// DATE UTILS
+// ══════════════════════════════════════════════════
+const MFR=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+const DFR=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+function dim(y,m){ return new Date(y,m+1,0).getDate(); }
+function dow(y,m,d){ return new Date(y,m,d).getDay(); }
+function isWE(y,m,d){ const w=dow(y,m,d); return w===0||w===6; }
+function dayCap(y,m,d){ if(isWE(y,m,d)) return 0; return dow(y,m,d)===5?7:8; }
+function mk(){ return `${state.currentYear}-${String(state.currentMonth+1).padStart(2,'0')}`; }
+function monthWorkH(y,m){ let h=0; for(let d=1;d<=dim(y,m);d++) h+=dayCap(y,m,d); return h; }
+function monthWorkDays(y,m){ let c=0; for(let d=1;d<=dim(y,m);d++) if(!isWE(y,m,d)) c++; return c; }
+
+// ══════════════════════════════════════════════════
+// TIME DATA
+// ══════════════════════════════════════════════════
+function pk(proj){ return `${proj.code}__${proj.name}`; }
+function getH(monthk,pkey,day){ return state.timeData[monthk]?.[pkey]?.[day]||0; }
+function setH(monthk,pkey,day,val){
+  if(!state.timeData[monthk]) state.timeData[monthk]={};
+  if(!state.timeData[monthk][pkey]) state.timeData[monthk][pkey]={};
+  if(val===0) delete state.timeData[monthk][pkey][day];
+  else state.timeData[monthk][pkey][day]=val;
+  saveState();
+}
+function projTotal(monthk,pkey){ return Object.values(state.timeData[monthk]?.[pkey]||{}).reduce((a,b)=>a+b,0); }
+function dayTotal(monthk,day,excl=false){
+  let t=0;
+  for(const k in (state.timeData[monthk]||{})){
+    if(excl&&(k===KEY_CONGES||k===KEY_FERIES)) continue;
+    t+=state.timeData[monthk][k][day]||0;
+  }
+  return t;
+}
+function monthTotal(monthk,excl=false){
+  let t=0;
+  for(const k in (state.timeData[monthk]||{})){
+    if(excl&&(k===KEY_CONGES||k===KEY_FERIES)) continue;
+    for(const d in state.timeData[monthk][k]) t+=state.timeData[monthk][k][d];
+  }
+  return t;
+}
+
+// ══════════════════════════════════════════════════
+// MONTH PROJECTS — per-month active project list
+// ══════════════════════════════════════════════════
+
+// Return the active pk list for a month key, initialising from previous month if new
+function getMonthPks(monthk){
+  if(state.monthProjects[monthk]) return state.monthProjects[monthk];
+  // Try to copy from previous month
+  const [y,m] = monthk.split('-').map(Number);
+  let prevM=m-1, prevY=y;
+  if(prevM<1){prevM=12;prevY--;}
+  const prevKey=`${prevY}-${String(prevM).padStart(2,'0')}`;
+  if(state.monthProjects[prevKey]){
+    state.monthProjects[monthk]=[...state.monthProjects[prevKey]];
+  } else {
+    // First ever month: use all projects
+    state.monthProjects[monthk]=state.projects.map(p=>pk(p));
+  }
+  saveState();
+  return state.monthProjects[monthk];
+}
+
+// Get actual project objects active for current month, sorted
+function getMonthProjects(monthk){
+  const pks=getMonthPks(monthk);
+  return sortProjs(state.projects.filter(p=>pks.includes(pk(p))));
+}
+
+// Add a project key to current month
+function addPkToMonth(monthk, pkey){
+  const pks=getMonthPks(monthk);
+  if(!pks.includes(pkey)){ pks.push(pkey); saveState(); }
+}
+
+// Remove a project key from current month (does NOT delete timeData)
+function removePkFromMonth(monthk, pkey){
+  const pks=getMonthPks(monthk);
+  const idx=pks.indexOf(pkey);
+  if(idx>-1){ pks.splice(idx,1); saveState(); }
+}
+
+// ══════════════════════════════════════════════════
+// WEEK BOUNDARIES — returns Set of days that START a new week in the month
+// ══════════════════════════════════════════════════
+function weekStartDays(y,m){
+  const days=dim(y,m), starts=new Set();
+  for(let d=1;d<=days;d++){
+    const dw=dow(y,m,d); // 0=Sun,1=Mon,...,6=Sat
+    if(d===1||dw===1) starts.add(d); // Monday or first day of month
+  }
+  return starts;
+}
+
+// Returns for each week-start day, the range of days in that week [start, end]
+function weekRanges(y,m){
+  const starts=[...weekStartDays(y,m)].sort((a,b)=>a-b);
+  const days=dim(y,m);
+  return starts.map((s,i)=>({start:s, end:starts[i+1]?starts[i+1]-1:days}));
+}
+
+// Week index for a given day (0-based)
+function weekIdxOfDay(y,m,d,ranges){
+  for(let i=0;i<ranges.length;i++) if(d>=ranges[i].start&&d<=ranges[i].end) return i;
+  return 0;
+}
+
+// Week total for a project key
+function weekTotalForPkey(monthk,pkey,range){
+  let t=0;
+  for(let d=range.start;d<=range.end;d++) t+=getH(monthk,pkey,d);
+  return t;
+}
+
+// ══════════════════════════════════════════════════
+// SORT
+// ══════════════════════════════════════════════════
+function sortProjs(arr){
+  return [...arr].sort((a,b)=>{
+    const ca=(a.clientName||'').toLowerCase(), cb=(b.clientName||'').toLowerCase();
+    if(ca<cb) return -1; if(ca>cb) return 1;
+    const pa=(a.code||'').toLowerCase(), pb=(b.code||'').toLowerCase();
+    return pa<pb?-1:pa>pb?1:0;
+  });
+}
+
+// ══════════════════════════════════════════════════
+// DAY COLOR
+// ══════════════════════════════════════════════════
+function dayColorCls(y,m,d,monthk){
+  if(isWE(y,m,d)) return '';
+  const cap=dayCap(y,m,d);
+  const conges=getH(monthk,KEY_CONGES,d);
+  const feries=getH(monthk,KEY_FERIES,d);
+  const absTotal=conges+feries;
+  if(absTotal>=cap) return ''; // full absence, no color
+  const effCap=cap-absTotal;
+  const billable=dayTotal(monthk,d,true);
+  if(billable===0) return '';
+  const pct=billable/effCap;
+  if(pct>=1) return 'day-green';
+  if(pct>=0.5) return 'day-orange';
+  return 'day-red';
+}
+
+// ══════════════════════════════════════════════════
+// TIMESHEET RENDER
+// ══════════════════════════════════════════════════
+function renderTimesheet(){
+  const {currentYear:y,currentMonth:m}=state;
+  const monthk=mk();
+  const days=dim(y,m);
+  const today=new Date();
+  document.getElementById('monthLabel').textContent=`${MFR[m]} ${y}`;
+  document.getElementById('collabName').value=state.collaborateur;
+
+  // Precompute day colors
+  const dcs={};
+  for(let d=1;d<=days;d++) dcs[d]=dayColorCls(y,m,d,monthk);
+
+  // HEADER ROW
+  const wStarts=weekStartDays(y,m);
+  const wRanges=weekRanges(y,m);
+  let wNum=0;
+  let hd='<tr>';
+  hd+='<th class="col-entity">Entité</th><th class="col-client">Client</th><th class="col-code">Code</th><th class="col-master">Maître</th><th class="col-project">Projet</th><th class="col-total">Total</th>';
+  for(let d=1;d<=days;d++){
+    if(wStarts.has(d)){ hd+=`<th class="week-total-th">S${++wNum}</th>`; }
+    const dw=dow(y,m,d), we=isWE(y,m,d);
+    const isTdy=today.getFullYear()===y&&today.getMonth()===m&&today.getDate()===d;
+    const cap=dayCap(y,m,d);
+    const cls=we?'day-header weekend':isTdy?'day-header today':'day-header';
+    hd+=`<th class="${cls}">${DFR[dw]}<br>${d}${cap?`<span class="day-cap">${cap}h</span>`:''}`;
+    hd+=`</th>`;
+  }
+  hd+='</tr>';
+  document.getElementById('timesheetHead').innerHTML=hd;
+
+  // BODY
+  let bd='';
+  const NCOLS=6+days+wRanges.length;
+
+  // — Absences section —
+  bd+=`<tr class="group-header"><td colspan="${NCOLS}">Absences — non exportées</td></tr>`;
+  bd+=absRow(KEY_CONGES,'Congés',days,monthk,y,m,wStarts,wRanges);
+  bd+=absRow(KEY_FERIES,'Jours fériés',days,monthk,y,m,wStarts,wRanges);
+
+  // — Project groups —
+  const activeProjs=getMonthProjects(monthk);
+  // "Add project" button row at the bottom
+  const grps=[{label:'Interne',cat:'interne'},{label:'Vendu',cat:'vendu'},{label:'AO',cat:'ao'},{label:'Autre',cat:'autre'}];
+  for(const g of grps){
+    const projs=activeProjs.filter(p=>p.category===g.cat);
+    if(!projs.length) continue;
+    bd+=`<tr class="group-header"><td colspan="${NCOLS}">${g.label}</td></tr>`;
+    for(const proj of projs){
+      const pkey=pk(proj);
+      const tot=projTotal(monthk,pkey);
+      const hasData=tot>0;
+      bd+=`<tr data-pkey="${pkey}">`;
+      bd+=`<td class="col-entity"><div class="cell-text entity-text" style="color:${entityTextColor(proj.entity)}">${proj.entity||'—'}</div></td>`;
+      bd+=`<td class="col-client"><div class="cell-text client">${proj.clientName||'—'}</div></td>`;
+      bd+=`<td class="col-code"><div class="cell-text code">${proj.code}</div></td>`;
+      bd+=`<td class="col-master"><div class="cell-text master">${proj.master||'—'}</div></td>`;
+      bd+=`<td class="col-project">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
+          <div class="cell-text project" style="flex:1;padding-right:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${proj.name}">${proj.name}</div>
+          <button class="row-remove-btn ${hasData?'row-remove-hasdata':''}" onclick="removeMonthProject('${pkey}')" title="${hasData?'Ce projet a des heures saisies ce mois — supprimer quand même ?':'Retirer du mois'}">✕</button>
+        </div>
+      </td>`;
+      bd+=`<td class="total-cell ${tot>0?'has-value':'empty'}" id="tot_${pkey}">${tot>0?fmtH(tot):'—'}</td>`;
+      for(let d=1;d<=days;d++){
+        if(wStarts.has(d)){
+          const wIdx=weekIdxOfDay(y,m,d,wRanges);
+          const wt=weekTotalForPkey(monthk,pkey,wRanges[wIdx]);
+          bd+=`<td class="week-total-cell ${wt>0?'':'empty'}" data-wtpk="${pkey}" data-wridx="${wIdx}">${wt>0?fmtH(wt):'—'}</td>`;
+        }
+        const we=isWE(y,m,d), val=getH(monthk,pkey,d);
+        const absVal=getH(monthk,KEY_CONGES,d)+getH(monthk,KEY_FERIES,d);
+        const absLocked=!we&&absVal>=dayCap(y,m,d)&&dayCap(y,m,d)>0;
+        const locked=we||absLocked;
+        const lockedTitle=we?'Week-end — saisie impossible':absLocked?'Journée couverte par congés/férié':'';
+        bd+=`<td class="time-cell ${locked?'day-blocked':dcs[d]}"><input type="number" class="time-input ${we?'weekend':''} ${val>0?'has-value':''} ${locked?'locked':''}" min="0" max="8" step="0.5" value="${val||''}" data-pk="${pkey}" data-day="${d}" ${locked?'disabled title="'+lockedTitle+'"':'onchange="onTI(this)"'}></td>`;
+      }
+      bd+=`</tr>`;
+    }
+  }
+  // — Add project row —
+  bd+=`<tr class="add-project-row"><td colspan="${NCOLS}">
+    <button class="btn-add-project" onclick="openAddMonthProject()">＋ Ajouter un projet à ce mois</button>
+  </td></tr>`;
+
+  // — Day totals row —
+  const grandTotal=monthTotal(monthk,true);
+  bd+=`<tr class="day-total-row"><td colspan="5"><div class="cell-text" style="color:var(--text3);font-size:11px;text-align:right;padding-right:8px">Total / jour</div></td>`;
+  bd+=`<td class="total-cell" style="font-size:11px;color:var(--text3)">${fmtH(grandTotal)}</td>`;
+  for(let d=1;d<=days;d++){
+    if(wStarts.has(d)){
+      const wIdx=weekIdxOfDay(y,m,d,wRanges);
+      const range=wRanges[wIdx];
+      let wt=0;
+      for(let wd=range.start;wd<=range.end;wd++) wt+=dayTotal(monthk,wd);
+      bd+=`<td class="week-total-cell ${wt>0?'':'empty'}" style="font-size:11px;${wt>0?'color:var(--text2)':'color:var(--text3)'}">${wt>0?fmtH(wt):''}</td>`;
+    }
+    const dt=dayTotal(monthk,d), cap=dayCap(y,m,d), we=isWE(y,m,d);
+    let style='color:var(--text3)';
+    if(!we&&dt>0){ if(dt>cap) style='color:var(--red)'; else if(dt===cap) style='color:var(--accent)'; else style='color:var(--orange)'; }
+    bd+=`<td><div class="day-total-val" style="${style}">${dt>0?fmtH(dt):''}</div></td>`;
+  }
+  bd+=`</tr>`;
+
+  document.getElementById('timesheetBody').innerHTML=bd;
+  updateStats();
+}
+
+function absRow(pkey,label,days,monthk,y,m,wStarts,wRanges){
+  const tot=projTotal(monthk,pkey);
+  let r=`<tr>`;
+  r+=`<td class="col-entity"><div class="cell-text" style="color:var(--text3)">—</div></td>`;
+  r+=`<td class="col-client"><div class="cell-text" style="color:var(--text3)">—</div></td>`;
+  r+=`<td class="col-code"><div class="cell-text code">—</div></td>`;
+  r+=`<td class="col-master"><div class="cell-text">—</div></td>`;
+  r+=`<td class="col-project"><div class="cell-text absence-label">${label}</div></td>`;
+  r+=`<td class="total-cell absence-total ${tot>0?'has-value':'empty'}" id="tot_${pkey}">${tot>0?fmtH(tot):'—'}</td>`;
+  for(let d=1;d<=days;d++){
+    if(wStarts.has(d)){
+      const wIdx=weekIdxOfDay(y,m,d,wRanges);
+      const wt=weekTotalForPkey(monthk,pkey,wRanges[wIdx]);
+      r+=`<td class="week-total-cell absence ${wt>0?'':'empty'}">${wt>0?fmtH(wt):'—'}</td>`;
+    }
+    const we=isWE(y,m,d), val=getH(monthk,pkey,d), cap=dayCap(y,m,d);
+    const weLocked=we;
+    r+=`<td class="time-cell ${weLocked?'day-blocked':''}"><input type="number" class="time-input absence-input ${we?'weekend':''} ${val>0?'has-value':''} ${weLocked?'locked':''}" min="0" max="${cap||8}" step="0.5" value="${val||''}" data-pk="${pkey}" data-day="${d}" data-absence="1" ${weLocked?'disabled title="Week-end — saisie impossible"':'onchange="onTI(this)"'}></td>`;
+  }
+  r+=`</tr>`;
+  return r;
+}
+
+function onTI(input){
+  let val=parseFloat(input.value)||0;
+  if(val<0) val=0;
+  const maxV=parseFloat(input.max)||8;
+  if(val>maxV) val=maxV;
+  input.value=val||'';
+  const pkey=input.dataset.pk, day=parseInt(input.dataset.day), monthk=mk();
+  setH(monthk,pkey,day,val);
+  input.classList.toggle('has-value',val>0);
+  // Update project total cell
+  const newTot=projTotal(monthk,pkey);
+  const tc=document.getElementById(`tot_${pkey}`);
+  if(tc){
+    tc.textContent=newTot>0?fmtH(newTot):'—';
+    tc.className=`total-cell ${input.dataset.absence?'absence-total':''} ${newTot>0?'has-value':'empty'}`;
+  }
+  // If this was an absence row, re-lock/unlock project inputs for that day
+  if(input.dataset.absence) updateDayLocks(day);
+  recolorDay(day);
+  updateDayTotalCol(day);
+  updateWeekTotalCol(day);
+  updateStats();
+}
+
+function updateWeekTotalCol(day){
+  const {currentYear:y,currentMonth:m}=state, monthk=mk();
+  const ranges=weekRanges(y,m);
+  const wIdx=weekIdxOfDay(y,m,day,ranges);
+  const range=ranges[wIdx];
+  // Update all week-total cells for this week (by data-wridx)
+  document.querySelectorAll(`[data-wridx="${wIdx}"]`).forEach(td=>{
+    const pkey=td.dataset.wtpk;
+    if(!pkey) return;
+    const wt=weekTotalForPkey(monthk,pkey,range);
+    td.textContent=wt>0?fmtH(wt):'—';
+    td.className=`week-total-cell ${wt>0?'':'empty'}`;
+  });
+}
+
+// Lock or unlock all project inputs for a given day based on absence coverage
+function updateDayLocks(day){
+  const {currentYear:y,currentMonth:m}=state, monthk=mk();
+  if(isWE(y,m,day)) return; // weekends always locked, nothing to toggle
+  const cap=dayCap(y,m,day);
+  const absVal=getH(monthk,KEY_CONGES,day)+getH(monthk,KEY_FERIES,day);
+  const shouldLock=cap>0&&absVal>=cap;
+  // Target: all inputs for this day that are NOT absence inputs
+  document.querySelectorAll(`[data-day="${day}"]:not([data-absence])`).forEach(inp=>{
+    const td=inp.parentElement;
+    if(shouldLock){
+      // Clear value and save if locking
+      if(parseFloat(inp.value)>0){
+        inp.value='';
+        setH(monthk,inp.dataset.pk,day,0);
+        inp.classList.remove('has-value');
+        // update that row's total
+        const t=projTotal(monthk,inp.dataset.pk);
+        const tc=document.getElementById(`tot_${inp.dataset.pk}`);
+        if(tc){ tc.textContent=t>0?fmtH(t):'—'; tc.className=`total-cell ${t>0?'has-value':'empty'}`; }
+      }
+      inp.disabled=true;
+      inp.classList.add('locked');
+      inp.title='Journée couverte par congés/férié';
+      td.className='time-cell day-blocked';
+    } else {
+      inp.disabled=false;
+      inp.classList.remove('locked');
+      inp.title='';
+      // Restore day color
+      const cls=dayColorCls(y,m,day,monthk);
+      td.className=`time-cell ${cls}`;
+    }
+  });
+}
+
+function recolorDay(day){
+  const {currentYear:y,currentMonth:m}=state, monthk=mk();
+  const cls=dayColorCls(y,m,day,monthk);
+  document.querySelectorAll(`[data-day="${day}"]`).forEach(inp=>{
+    const td=inp.parentElement;
+    // Don't color absence rows
+    if(inp.dataset.absence) { td.className='time-cell'; return; }
+    td.className=`time-cell ${cls}`;
+  });
+}
+
+function updateDayTotalCol(day){
+  const {currentYear:y,currentMonth:m}=state, monthk=mk();
+  const dt=dayTotal(monthk,day), cap=dayCap(y,m,day), we=isWE(y,m,day);
+  let style='color:var(--text3)';
+  if(!we&&dt>0){ if(dt>cap) style='color:var(--red)'; else if(dt===cap) style='color:var(--accent)'; else style='color:var(--orange)'; }
+  const trow=document.querySelector('.day-total-row');
+  if(!trow) return;
+  const cells=trow.querySelectorAll('td');
+  // cells[0]=label(colspan5), cells[1]=grandtotal, cells[2..]=days
+  if(cells[1+day]) cells[1+day].innerHTML=`<div class="day-total-val" style="${style}">${dt>0?fmtH(dt):''}</div>`;
+  const gt=monthTotal(monthk,true);
+  if(cells[1]) cells[1].textContent=fmtH(gt);
+}
+
+function updateStats(){
+  const {currentYear:y,currentMonth:m}=state, monthk=mk();
+  const tot=monthTotal(monthk,true);
+  const workH=monthWorkH(y,m), workDays=monthWorkDays(y,m);
+  const rem=workH-tot;
+  document.getElementById('statTotal').textContent=fmtH(tot);
+  document.getElementById('statDays').textContent=`${workDays}j / ${workH}h`;
+  const remEl=document.getElementById('statRemaining');
+  remEl.textContent=rem<=0?'✓ Complet':fmtH(rem);
+  remEl.className='stat-value '+(rem<=0?'ok':rem<16?'warn':'');
+}
+
+// ══════════════════════════════════════════════════
+// MONTH PROJECT MANAGEMENT (add/remove from saisie view)
+// ══════════════════════════════════════════════════
+
+function removeMonthProject(pkey){
+  const monthk=mk();
+  const hasData=projTotal(monthk,pkey)>0;
+  if(hasData){
+    if(!confirm('Ce projet a des heures saisies ce mois. Retirer quand même de la vue ? Les données sont conservées.')) return;
+  }
+  removePkFromMonth(monthk, pkey);
+  renderTimesheet();
+  toast('Projet retiré du mois');
+}
+
+function openAddMonthProject(){
+  document.getElementById('addMonthSearch').value='';
+  filterAddMonthList();
+  openModal('modalAddMonthProject');
+  setTimeout(()=>document.getElementById('addMonthSearch').focus(),100);
+}
+
+function filterAddMonthList(){
+  const monthk=mk();
+  const activePks=getMonthPks(monthk);
+  const q=document.getElementById('addMonthSearch').value.toLowerCase();
+  const available=state.projects.filter(p=>{
+    const alreadyIn=activePks.includes(pk(p));
+    if(alreadyIn) return false;
+    if(!q) return true;
+    return (p.clientName||'').toLowerCase().includes(q)||(p.code||'').toLowerCase().includes(q)||(p.name||'').toLowerCase().includes(q);
+  });
+  const sorted=sortProjs(available);
+  const el=document.getElementById('addMonthList');
+  if(!sorted.length){
+    el.innerHTML=`<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">${q?'Aucun projet correspondant':'Tous les projets sont déjà dans ce mois'}</div>`;
+    return;
+  }
+  el.innerHTML=sorted.map(p=>{
+    const pkey=pk(p);
+    return `<div class="add-month-item" onclick="confirmAddToMonth('${pkey}')">
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);transition:background 0.1s;" onmouseover="this.style.background='var(--accent-dim)'" onmouseout="this.style.background=''">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${p.clientName||'—'} · <span style="font-family:var(--mono)">${p.code}</span></div>
+        </div>
+        <div>${entityPill(p.entity)}</div>
+        <button style="background:var(--accent);color:#fff;border:none;border-radius:12px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--sans)">＋</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function confirmAddToMonth(pkey){
+  const monthk=mk();
+  addPkToMonth(monthk, pkey);
+  filterAddMonthList(); // refresh list
+  renderTimesheet();
+  const proj=state.projects.find(p=>pk(p)===pkey);
+  toast(`"${proj?.name}" ajouté au mois`);
+}
+
+// ══════════════════════════════════════════════════
+// ENTITY COLORS
+// ══════════════════════════════════════════════════
+const ENTITY_COLORS={
+  'Gulfstream Communication':{text:'#5b4fff',bg:'rgba(91,79,255,0.08)',border:'rgba(91,79,255,0.25)'},
+  'Digital Garden':{text:'#2dcc70',bg:'rgba(45,204,112,0.09)',border:'rgba(45,204,112,0.28)'},
+  'Clic Clac':{text:'#e07a30',bg:'rgba(224,122,48,0.09)',border:'rgba(224,122,48,0.28)'},
+  'Connect':{text:'#0e9de8',bg:'rgba(14,157,232,0.09)',border:'rgba(14,157,232,0.28)'},
+  'Gulfstream Activation':{text:'#e05555',bg:'rgba(224,85,85,0.09)',border:'rgba(224,85,85,0.28)'},
+  'Gulfstream RP':{text:'#c4607a',bg:'rgba(196,96,122,0.09)',border:'rgba(196,96,122,0.28)'},
+};
+function entityTextColor(e){ return ENTITY_COLORS[e]?.text||'#999'; }
+function entityPill(e){
+  if(!e) return '<span style="color:var(--text3)">—</span>';
+  const c=ENTITY_COLORS[e]||{text:'#999',bg:'rgba(153,153,153,0.1)',border:'rgba(153,153,153,0.3)'};
+  return `<span class="entity-pill" style="color:${c.text};background:${c.bg};border-color:${c.border}">${e}</span>`;
+}
+
+// ══════════════════════════════════════════════════
+// CLIENTS
+// ══════════════════════════════════════════════════
+function renderClients(){
+  if(!state.clients.length){
+    document.getElementById('clientsBody').innerHTML=`<tr><td colspan="3"><div class="empty-state"><div class="icon">◈</div><p>Aucun client</p></div></td></tr>`;
+    return;
+  }
+  const sorted=[...state.clients].sort((a,b)=>a.name.localeCompare(b.name));
+  document.getElementById('clientsBody').innerHTML=sorted.map(c=>{
+    const i=state.clients.indexOf(c);
+    return `<tr><td>${c.name}</td><td>${entityPill(c.entity)}</td><td style="display:flex;gap:6px;padding:6px 14px"><button class="btn btn-secondary" style="padding:4px 10px;font-size:11px" onclick="editClient(${i})">✎</button><button class="btn btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteClient(${i})">✕</button></td></tr>`;
+  }).join('');
+}
+let editingCIdx=null;
+function openAddClient(){ editingCIdx=null; document.getElementById('modalClientTitle').textContent='Nouveau client'; document.getElementById('cName').value=''; document.getElementById('cEntity').value='Gulfstream Communication'; openModal('modalClient'); }
+function editClient(i){ editingCIdx=i; const c=state.clients[i]; document.getElementById('modalClientTitle').textContent='Modifier le client'; document.getElementById('cName').value=c.name; document.getElementById('cEntity').value=c.entity; openModal('modalClient'); }
+function saveClient(){
+  const name=document.getElementById('cName').value.trim();
+  const entity=document.getElementById('cEntity').value;
+  if(!name){ toast('Nom requis','error'); return; }
+  if(editingCIdx!==null){
+    const old=state.clients[editingCIdx].name;
+    state.clients[editingCIdx]={name,entity};
+    state.projects.forEach(p=>{ if(p.clientName===old){p.clientName=name;p.entity=entity;} });
+    toast('Client modifié');
+  } else {
+    if(state.clients.some(c=>c.name===name)){ toast('Client déjà existant','error'); return; }
+    state.clients.push({name,entity});
+    toast('Client ajouté');
+  }
+  saveState(); closeModal('modalClient'); renderClients();
+}
+function deleteClient(i){
+  if(!confirm(`Supprimer "${state.clients[i].name}" ?`)) return;
+  state.clients.splice(i,1);
+  saveState(); renderClients(); toast('Client supprimé');
+}
+
+// ══════════════════════════════════════════════════
+// PROJECTS
+// ══════════════════════════════════════════════════
+function populateClientSel(){
+  const sel=document.getElementById('pClient');
+  const cur=sel.value;
+  sel.innerHTML='<option value="">— Sélectionner —</option>';
+  [...state.clients].sort((a,b)=>a.name.localeCompare(b.name)).forEach(c=>{
+    const o=document.createElement('option'); o.value=c.name; o.textContent=c.name; sel.appendChild(o);
+  });
+  sel.value=cur;
+}
+function onClientChange(){
+  const name=document.getElementById('pClient').value;
+  const c=state.clients.find(x=>x.name===name);
+  document.getElementById('pEntity').value=c?c.entity:'';
+}
+function renderProjects(filter=''){
+  const q=filter.toLowerCase();
+  const projs=sortProjs(state.projects.filter(p=>!q||(p.clientName||'').toLowerCase().includes(q)||(p.code||'').toLowerCase().includes(q)||(p.name||'').toLowerCase().includes(q)||(p.master||'').toLowerCase().includes(q)));
+  const catL={vendu:'Vendu',interne:'Interne',autre:'Autre'}, catC={vendu:'tag-vendu',interne:'tag-interne',autre:'tag-autre'};
+  if(!projs.length){ document.getElementById('projectsBody').innerHTML=`<tr><td colspan="7"><div class="empty-state"><div class="icon">◈</div><p>Aucun projet</p></div></td></tr>`; return; }
+  document.getElementById('projectsBody').innerHTML=projs.map(p=>{
+    const i=state.projects.indexOf(p);
+    return `<tr>
+      <td>${entityPill(p.entity)}</td>
+      <td>${p.clientName||'—'}</td>
+      <td><span class="code-badge">${p.code}</span></td>
+      <td>${p.master?`<span class="master-badge">${p.master}</span>`:'<span style="color:var(--text3)">—</span>'}</td>
+      <td>${p.name}</td>
+      <td><span class="tag ${catC[p.category]||'tag-autre'}">${catL[p.category]||p.category}</span></td>
+      <td style="display:flex;gap:6px;padding:6px 14px">
+        <button class="btn btn-secondary" style="padding:4px 10px;font-size:11px" onclick="editProject(${i})">✎</button>
+        <button class="btn btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteProject(${i})">✕</button>
+      </td></tr>`;
+  }).join('');
+}
+function filterProjects(){ renderProjects(document.getElementById('projectSearch').value); }
+let editingPIdx=null;
+function openAddProject(){ editingPIdx=null; populateClientSel(); document.getElementById('modalProjectTitle').textContent='Nouveau projet'; ['pClient','pCode','pMaster','pName'].forEach(id=>document.getElementById(id).value=''); document.getElementById('pEntity').value=''; document.getElementById('pCategory').value='vendu'; openModal('modalProject'); }
+function editProject(i){
+  editingPIdx=i; const p=state.projects[i];
+  document.getElementById('modalProjectTitle').textContent='Modifier le projet';
+  populateClientSel();
+  document.getElementById('pClient').value=p.clientName||'';
+  document.getElementById('pEntity').value=p.entity||'';
+  document.getElementById('pCode').value=p.code;
+  document.getElementById('pMaster').value=p.master||'';
+  document.getElementById('pName').value=p.name;
+  document.getElementById('pCategory').value=p.category||'vendu';
+  openModal('modalProject');
+}
+function saveProject(){
+  const clientName=document.getElementById('pClient').value;
+  const entity=document.getElementById('pEntity').value;
+  const code=document.getElementById('pCode').value.trim();
+  const master=document.getElementById('pMaster').value.trim();
+  const name=document.getElementById('pName').value.trim();
+  const category=document.getElementById('pCategory').value;
+  if(!code||!name){ toast('Code et nom requis','error'); return; }
+  const proj={clientName,entity,code,master,name,category};
+  if(editingPIdx!==null){ state.projects[editingPIdx]=proj; toast('Projet modifié'); }
+  else{ state.projects.push(proj); toast('Projet ajouté'); }
+  saveState(); closeModal('modalProject'); renderProjects();
+}
+function deleteProject(i){ if(!confirm(`Supprimer "${state.projects[i].name}" ?`)) return; state.projects.splice(i,1); saveState(); renderProjects(); toast('Projet supprimé'); }
+function openImportProjects(){ document.getElementById('importTsv').value=''; openModal('modalImport'); }
+function importTsv(){
+  const raw=document.getElementById('importTsv').value.trim(); if(!raw) return;
+  let added=0,skipped=0;
+  for(const line of raw.split('\n').filter(l=>l.trim())){
+    const p=line.split('\t').map(s=>s.trim());
+    if(p.length<2) continue;
+    const [code,clientName,name,category,master]=p;
+    if(!code||!name) continue;
+    const c=state.clients.find(x=>x.name===clientName);
+    const entity=c?c.entity:'';
+    if(state.projects.some(x=>x.code===code&&x.name===name)){ skipped++; continue; }
+    state.projects.push({clientName:clientName||'—',entity,code,master:master||'',name,category:category||'vendu'});
+    added++;
+  }
+  saveState(); closeModal('modalImport'); renderProjects(); toast(`${added} importé(s), ${skipped} ignoré(s)`);
+}
+
+// ══════════════════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════════════════
+function renderDashboard(){
+  const {currentYear:y,currentMonth:m}=state, monthk=mk();
+  document.getElementById('dashMonthLabel').textContent=`${MFR[m]} ${y}`;
+  const tot=monthTotal(monthk,true), workH=monthWorkH(y,m), pct=workH?Math.round(tot/workH*100):0;
+  const actProjs=getMonthProjects(monthk).filter(p=>projTotal(monthk,pk(p))>0);
+  document.getElementById('dashKpis').innerHTML=`
+    <div class="kpi-card"><div class="kpi-label">Heures saisies</div><div class="kpi-value accent">${fmtH(tot)}</div><div class="kpi-sub">sur ${fmtH(workH)} attendues</div></div>
+    <div class="kpi-card"><div class="kpi-label">Complétion</div><div class="kpi-value ${pct>=100?'accent':pct>=75?'':'warn'}">${pct}%</div><div class="kpi-sub">${monthWorkDays(y,m)} jours ouvrés</div></div>
+    <div class="kpi-card"><div class="kpi-label">Projets actifs</div><div class="kpi-value">${actProjs.length}</div><div class="kpi-sub">sur ${state.projects.length} projets</div></div>
+    <div class="kpi-card"><div class="kpi-label">Reste à saisir</div><div class="kpi-value ${tot>=workH?'accent':'warn'}">${tot>=workH?'✓':fmtH(workH-tot)}</div><div class="kpi-sub">${tot>=workH?'Complet !':'à compléter'}</div></div>`;
+  const cmap={};
+  for(const p of state.projects){ const h=projTotal(monthk,pk(p)); if(!h) continue; if(!cmap[p.clientName]) cmap[p.clientName]={hours:0,projects:0,entity:p.entity}; cmap[p.clientName].hours+=h; cmap[p.clientName].projects++; }
+  const csorted=Object.entries(cmap).sort((a,b)=>b[1].hours-a[1].hours);
+  const maxH=csorted[0]?.[1].hours||1;
+  document.getElementById('dashBreakdownBody').innerHTML=csorted.map(([c,d])=>`<tr><td>${c}</td><td>${entityPill(d.entity)}</td><td style="color:var(--text3)">${d.projects} projet(s)</td><td style="color:var(--accent);font-weight:500">${fmtH(d.hours)}</td><td class="bar-cell"><div class="bar-wrap"><div class="bar-fill" style="width:${Math.round(d.hours/maxH*100)}%"></div></div></td></tr>`).join('')||'<tr><td colspan="5" style="color:var(--text3);text-align:center;padding:20px">Aucune donnée</td></tr>';
+  document.getElementById('dashProjectsBody').innerHTML=sortProjs(actProjs).map(p=>`<tr><td>${p.name}</td><td><span class="code-badge">${p.code}</span></td><td>${p.master?`<span class="master-badge">${p.master}</span>`:'—'}</td><td style="color:var(--text2)">${p.clientName}</td><td style="color:var(--accent);font-weight:500">${fmtH(projTotal(monthk,pk(p)))}</td></tr>`).join('')||'<tr><td colspan="5" style="color:var(--text3);text-align:center;padding:20px">Aucun projet actif</td></tr>';
+}
+
+// ══════════════════════════════════════════════════
+// EXPORT
+// ══════════════════════════════════════════════════
+
+// ── Tab switch ──
+function switchExportTab(tab){
+  document.getElementById('panel-monthly').style.display = tab==='monthly'?'block':'none';
+  document.getElementById('panel-weekly').style.display  = tab==='weekly'?'block':'none';
+  document.getElementById('tab-monthly').classList.toggle('active', tab==='monthly');
+  document.getElementById('tab-weekly').classList.toggle('active', tab==='weekly');
+  if(tab==='weekly') renderWeeklyExport();
+}
+
+// ── Helpers ──
+function fmtDate(y,m,d){ return `${String(d).padStart(2,'0')}/${String(m+1).padStart(2,'0')}/${y}`; }
+function lineTxt(l){ return `${l.date}\t${l.time}\t\t\t${l.project}\t\t\t${l.collab}\t${l.code}`; }
+function hoursToTime(tot){ const hh=Math.floor(tot),mm=Math.round((tot-hh)*60); return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`; }
+
+// ── Monthly export ──
+function buildExportLines(){
+  const {currentYear:y,currentMonth:m}=state, monthk=mk();
+  const dateStr=fmtDate(y,m,dim(y,m));
+  const collab=state.collaborateur;
+  return sortProjs(getMonthProjects(monthk)).flatMap(p=>{
+    const tot=projTotal(monthk,pk(p));
+    if(!tot) return [];
+    return [{date:dateStr,time:hoursToTime(tot),project:p.name,collab,code:p.code}];
+  });
+}
+function getExportText(){ return buildExportLines().map(lineTxt).join('\r\n'); }
+function renderExport(){
+  const {currentYear:y,currentMonth:m}=state;
+  document.getElementById('exportMonthLabel').textContent=`${MFR[m]} ${y}`;
+  const lines=buildExportLines();
+  document.getElementById('exportPreview').textContent=lines.length?lines.map(lineTxt).join('\n'):'— Aucune donnée à exporter —';
+  // reset to monthly tab
+  switchExportTab('monthly');
+}
+function downloadTxt(){
+  const {currentYear:y,currentMonth:m}=state, text=getExportText();
+  if(!text){ toast('Aucune donnée','warn'); return; }
+  const fname=`temps${y}${String(m+1).padStart(2,'0')}.txt`;
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type:'text/plain;charset=utf-8'})); a.download=fname; a.click();
+  toast(`Fichier ${fname} téléchargé`);
+}
+function copyExport(){ const t=getExportText(); if(!t){ toast('Aucune donnée','warn'); return; } navigator.clipboard.writeText(t).then(()=>toast('Copié !')); }
+
+// ── Weekly helpers ──
+// Returns array of weeks: [{num, days:[{d,y,m}], label}]
+function getWeeksOfMonth(y,m){
+  const totalDays=dim(y,m);
+  const weeks=[];
+  let weekDays=[];
+  let weekNum=1;
+  for(let d=1;d<=totalDays;d++){
+    const dw=dow(y,m,d);
+    weekDays.push(d);
+    // End of week = Sunday, or last day of month
+    if(dw===0||d===totalDays){
+      weeks.push({num:weekNum++, days:[...weekDays], label:null});
+      weekDays=[];
+    }
+  }
+  // label each week
+  weeks.forEach(w=>{
+    const first=w.days[0], last=w.days[w.days.length-1];
+    w.label=`Semaine ${w.num} — du ${String(first).padStart(2,'0')} au ${String(last).padStart(2,'0')} ${MFR[m]}`;
+    // last working day of the week within this month
+    let lastWorking=null;
+    for(let i=w.days.length-1;i>=0;i--){ if(!isWE(y,m,w.days[i])){ lastWorking=w.days[i]; break; } }
+    w.lastWorkingDay=lastWorking;
+  });
+  return weeks;
+}
+
+// Build export lines for a specific set of days
+function buildWeekExportLines(weekDays, lastWorkingDay){
+  const {currentYear:y,currentMonth:m}=state, monthk=mk();
+  if(!lastWorkingDay) return [];
+  const dateStr=fmtDate(y,m,lastWorkingDay);
+  const collab=state.collaborateur;
+  return sortProjs(getMonthProjects(monthk)).flatMap(p=>{
+    let weekTotal=0;
+    for(const d of weekDays) weekTotal+=getH(monthk,pk(p),d);
+    if(!weekTotal) return [];
+    return [{date:dateStr,time:hoursToTime(weekTotal),project:p.name,collab,code:p.code}];
+  });
+}
+
+// ── Weekly render ──
+function renderWeeklyExport(){
+  const {currentYear:y,currentMonth:m}=state;
+  const weeks=getWeeksOfMonth(y,m);
+  const container=document.getElementById('weeklyBlocks');
+
+  container.innerHTML=weeks.map(w=>{
+    const lines=buildWeekExportLines(w.days, w.lastWorkingDay);
+    const text=lines.map(lineTxt).join('\r\n');
+    const hasData=lines.length>0;
+    return `<div class="week-block">
+      <div class="week-block-header">
+        <div>
+          <div class="week-block-title">${w.label}</div>
+          <div class="week-block-meta">${hasData?`${lines.length} projet(s) — ${fmtH(lines.reduce((a,l)=>{ const [hh,mm]=l.time.split(':').map(Number); return a+hh+mm/60; },0))} total`:'Aucune saisie'}</div>
+        </div>
+        <div class="week-block-actions">
+          ${hasData?`<button class="btn btn-secondary" style="padding:5px 12px;font-size:11px" onclick="copyWeek(${w.num-1})">⎘ Copier</button>
+          <button class="btn btn-primary" style="padding:5px 12px;font-size:11px" onclick="downloadWeek(${w.num-1})">↓ .txt</button>`:''}
+        </div>
+      </div>
+      ${hasData
+        ?`<div class="week-preview" id="week-preview-${w.num-1}">${text}</div>`
+        :`<div class="week-empty">Aucune donnée saisie cette semaine</div>`
+      }
+    </div>`;
+  }).join('');
+
+  // Store weeks data for download
+  window._weekData=weeks;
+}
+
+function copyWeek(idx){
+  const w=window._weekData[idx];
+  const text=buildWeekExportLines(w.days,w.lastWorkingDay).map(lineTxt).join('\r\n');
+  navigator.clipboard.writeText(text).then(()=>toast(`Semaine ${idx+1} copiée !`));
+}
+
+function downloadWeek(idx){
+  const {currentYear:y,currentMonth:m}=state;
+  const w=window._weekData[idx];
+  const text=buildWeekExportLines(w.days,w.lastWorkingDay).map(lineTxt).join('\r\n');
+  if(!text){ toast('Aucune donnée','warn'); return; }
+  const fname=`temps${y}${String(m+1).padStart(2,'0')}_S${idx+1}.txt`;
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type:'text/plain;charset=utf-8'})); a.download=fname; a.click();
+  toast(`Semaine ${idx+1} téléchargée`);
+}
+
+function downloadAllWeeks(){
+  const {currentYear:y,currentMonth:m}=state;
+  const weeks=getWeeksOfMonth(y,m);
+  let downloaded=0;
+  weeks.forEach((w,idx)=>{
+    const text=buildWeekExportLines(w.days,w.lastWorkingDay).map(lineTxt).join('\r\n');
+    if(!text) return;
+    const fname=`temps${y}${String(m+1).padStart(2,'0')}_S${idx+1}.txt`;
+    const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type:'text/plain;charset=utf-8'})); a.download=fname;
+    // Stagger downloads slightly so browser doesn't block them
+    setTimeout(()=>a.click(), idx*200);
+    downloaded++;
+  });
+  if(downloaded===0){ toast('Aucune donnée à exporter','warn'); return; }
+  toast(`${downloaded} fichier(s) semaine en cours de téléchargement…`);
+}
+
+// ══════════════════════════════════════════════════
+// JSON BACKUP (local)
+// ══════════════════════════════════════════════════
+function exportData(){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(state,null,2)],{type:'application/json'})); a.download=`temps_backup_${new Date().toISOString().slice(0,10)}.json`; a.click(); toast('Sauvegarde locale téléchargée'); }
+function importData(){ document.getElementById('jsonImporter').click(); }
+function handleJsonImport(ev){ const f=ev.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=e=>{ try{ const imp=JSON.parse(e.target.result); if(imp.projects!==undefined){ state={...state,...imp}; saveState(); renderTimesheet(); toast('Données importées'); } else toast('Format invalide','error'); }catch{ toast('Erreur import','error'); } }; r.readAsText(f); ev.target.value=''; }
+
+// ══════════════════════════════════════════════════
+// GITHUB SYNC
+// ══════════════════════════════════════════════════
+const GH_CFG_KEY='temps_gh_config';
+
+function getGhConfig(){
+  try{ return JSON.parse(localStorage.getItem(GH_CFG_KEY)||'null'); }catch{ return null; }
+}
+function saveGhConfigToStorage(cfg){
+  localStorage.setItem(GH_CFG_KEY, JSON.stringify(cfg));
+}
+
+function openGhConfig(){
+  const cfg=getGhConfig();
+  if(cfg){
+    document.getElementById('ghToken').value=cfg.token||'';
+    document.getElementById('ghRepo').value=cfg.repo||'gbourdeauGS/twopub';
+    document.getElementById('ghFile').value=cfg.file||'saves/temps-2026.json';
+  }
+  document.getElementById('ghConfigError').textContent='';
+  openModal('modalGhConfig');
+}
+
+function saveGhConfig(){
+  const token=document.getElementById('ghToken').value.trim();
+  const repo=document.getElementById('ghRepo').value.trim();
+  const file=document.getElementById('ghFile').value.trim();
+  if(!token||!repo||!file){
+    document.getElementById('ghConfigError').textContent='Tous les champs sont requis.';
+    return;
+  }
+  saveGhConfigToStorage({token,repo,file});
+  closeModal('modalGhConfig');
+  updateGhStatusDot();
+  toast('Configuration GitHub enregistrée');
+}
+
+function updateGhStatusDot(){
+  const dot=document.getElementById('ghStatusDot');
+  const cfg=getGhConfig();
+  if(!cfg||!cfg.token){ dot.className='gh-status-dot'; dot.title='GitHub non configuré — cliquez ⚙ pour configurer'; }
+  else { dot.className='gh-status-dot ok'; dot.title=`GitHub configuré — ${cfg.repo} / ${cfg.file}`; }
+}
+
+async function ghApiGet(cfg, path){
+  const res=await fetch(`https://api.github.com/repos/${cfg.repo}/contents/${path}`,{
+    headers:{'Authorization':`token ${cfg.token}`,'Accept':'application/vnd.github.v3+json'}
+  });
+  if(!res.ok) throw new Error(`GitHub API ${res.status}: ${res.statusText}`);
+  return res.json();
+}
+
+async function ghApiPut(cfg, path, content, sha){
+  const body={
+    message:`Temps 2026 — sauvegarde ${new Date().toLocaleString('fr-FR')}`,
+    content: btoa(unescape(encodeURIComponent(content))),
+    ...(sha?{sha}:{})
+  };
+  const res=await fetch(`https://api.github.com/repos/${cfg.repo}/contents/${path}`,{
+    method:'PUT',
+    headers:{'Authorization':`token ${cfg.token}`,'Accept':'application/vnd.github.v3+json','Content-Type':'application/json'},
+    body:JSON.stringify(body)
+  });
+  if(!res.ok){
+    const err=await res.json().catch(()=>({}));
+    throw new Error(`GitHub API ${res.status}: ${err.message||res.statusText}`);
+  }
+  return res.json();
+}
+
+async function ghPush(){
+  const cfg=getGhConfig();
+  if(!cfg||!cfg.token){ toast('GitHub non configuré','warn'); openGhConfig(); return; }
+  const dot=document.getElementById('ghStatusDot');
+  dot.className='gh-status-dot syncing'; dot.title='Sauvegarde en cours…';
+  try{
+    // Try to get current SHA (file might not exist yet)
+    let sha=null;
+    try{ const existing=await ghApiGet(cfg,cfg.file); sha=existing.sha; }catch(e){ /* file doesn't exist yet, ok */ }
+    const json=JSON.stringify(state,null,2);
+    await ghApiPut(cfg, cfg.file, json, sha);
+    dot.className='gh-status-dot ok'; dot.title=`Dernière sync: ${new Date().toLocaleTimeString('fr-FR')}`;
+    toast('✓ Sauvegardé sur GitHub');
+  }catch(e){
+    dot.className='gh-status-dot err'; dot.title=`Erreur: ${e.message}`;
+    toast(`Erreur GitHub: ${e.message}`,'error');
+  }
+}
+
+async function ghPull(){
+  const cfg=getGhConfig();
+  if(!cfg||!cfg.token){ toast('GitHub non configuré','warn'); openGhConfig(); return; }
+  const dot=document.getElementById('ghStatusDot');
+  dot.className='gh-status-dot syncing'; dot.title='Chargement en cours…';
+  try{
+    const data=await ghApiGet(cfg,cfg.file);
+    const json=decodeURIComponent(escape(atob(data.content.replace(/
+/g,''))));
+    const imp=JSON.parse(json);
+    if(imp.projects===undefined) throw new Error('Format de fichier invalide');
+    state={...state,...imp};
+    saveState();
+    renderTimesheet();
+    dot.className='gh-status-dot ok'; dot.title=`Chargé depuis GitHub: ${new Date().toLocaleTimeString('fr-FR')}`;
+    toast('✓ Données chargées depuis GitHub');
+  }catch(e){
+    dot.className='gh-status-dot err'; dot.title=`Erreur: ${e.message}`;
+    toast(`Erreur GitHub: ${e.message}`,'error');
+  }
+}
+
+async function ghTestConnection(){
+  const token=document.getElementById('ghToken').value.trim();
+  const repo=document.getElementById('ghRepo').value.trim();
+  const errEl=document.getElementById('ghConfigError');
+  if(!token||!repo){ errEl.textContent='Token et repo requis pour tester.'; return; }
+  errEl.textContent='Test en cours…';
+  try{
+    const res=await fetch(`https://api.github.com/repos/${repo}`,{
+      headers:{'Authorization':`token ${token}`,'Accept':'application/vnd.github.v3+json'}
+    });
+    if(res.status===200){ errEl.style.color='var(--green)'; errEl.textContent='✓ Connexion réussie !'; }
+    else if(res.status===404){ errEl.style.color='var(--red)'; errEl.textContent='Repo introuvable — vérifiez le nom.'; }
+    else if(res.status===401){ errEl.style.color='var(--red)'; errEl.textContent='Token invalide ou expiré.'; }
+    else { errEl.style.color='var(--red)'; errEl.textContent=`Erreur ${res.status}`; }
+  }catch(e){ errEl.style.color='var(--red)'; errEl.textContent=`Erreur réseau: ${e.message}`; }
+}
+
+// ══════════════════════════════════════════════════
+// MODALS / TOAST / FORMAT
+// ══════════════════════════════════════════════════
+function openModal(id){ document.getElementById(id).classList.add('open'); }
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+document.addEventListener('click',e=>{ if(e.target.classList.contains('modal-overlay')) e.target.classList.remove('open'); });
+function toast(msg,type='success'){ const el=document.createElement('div'); el.className=`toast ${type!=='success'?type:''}`; el.textContent=msg; document.getElementById('toastContainer').appendChild(el); setTimeout(()=>el.remove(),3000); }
+function fmtH(h){ if(!h) return '0h'; const hh=Math.floor(h),mm=Math.round((h-hh)*60); return mm?`${hh}h${String(mm).padStart(2,'0')}`:`${hh}h`; }
+
+// ══════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════
+const DEFAULT_CLIENTS=[
+  {name:'Digital Garden',entity:'Digital Garden'},{name:'Ademe',entity:'Gulfstream Communication'},
+  {name:'Agence Bio',entity:'Gulfstream Communication'},{name:'Aib',entity:'Gulfstream Communication'},
+  {name:'Altyn',entity:'Digital Garden'},{name:'Aop Tomate',entity:'Gulfstream Communication'},
+  {name:'Astre',entity:'Digital Garden'},{name:'Bayer',entity:'Gulfstream Communication'},
+  {name:'Cipa',entity:'Gulfstream Communication'},{name:'Cipc',entity:'Gulfstream Communication'},
+  {name:'Civb',entity:'Gulfstream Communication'},{name:'CNC',entity:'Digital Garden'},
+  {name:'MODEAL',entity:'Gulfstream Communication'},{name:'Pasquier',entity:'Digital Garden'},
+  {name:'Tedxmontmartre',entity:'Digital Garden'},{name:'AOP Beurre',entity:'Gulfstream Communication'},
+  {name:'AOP Poulet Bourbensais',entity:'Gulfstream Communication'},
+];
+const DEFAULT_PROJECTS=[
+  {clientName:'Digital Garden',entity:'Digital Garden',code:'DGDG0362',master:'',name:'Sentinel',category:'interne'},
+  {clientName:'Digital Garden',entity:'Digital Garden',code:'DGDG0362',master:'',name:'Monthly',category:'interne'},
+  {clientName:'Digital Garden',entity:'Digital Garden',code:'DGDG0362',master:'',name:'Point projet',category:'interne'},
+  {clientName:'Digital Garden',entity:'Digital Garden',code:'DGDG0362',master:'',name:'Admin Dg',category:'interne'},
+  {clientName:'Digital Garden',entity:'Digital Garden',code:'DGDG022',master:'',name:'Planning DEV & DA DG',category:'interne'},
+  {clientName:'Digital Garden',entity:'Digital Garden',code:'DGDG027',master:'',name:'Com Agence // Site Dg // Articles Perspectives',category:'interne'},
+  {clientName:'Digital Garden',entity:'Digital Garden',code:'00039',master:'',name:'Développement commercial',category:'interne'},
+  {clientName:'Digital Garden',entity:'Digital Garden',code:'DGDG0362',master:'',name:'Bynder',category:'interne'},
+  {clientName:'Ademe',entity:'Gulfstream Communication',code:'DGGUL2919',master:'',name:'Ademe Pacte Industrie',category:'vendu'},
+  {clientName:'Agence Bio',entity:'Gulfstream Communication',code:'DGGSCO0257',master:'',name:'Cuisinons Plus Bio',category:'vendu'},
+  {clientName:'Aib',entity:'Gulfstream Communication',code:'DGCO0287',master:'',name:'Banane 2026',category:'vendu'},
+  {clientName:'Altyn',entity:'Digital Garden',code:'DGALTYN0001',master:'',name:'Refonte Globale',category:'vendu'},
+  {clientName:'Aop Tomate',entity:'Gulfstream Communication',code:'DGGUL1877',master:'',name:'Cultures Sous Serres',category:'vendu'},
+  {clientName:'Astre',entity:'Digital Garden',code:'DGAST0005',master:'',name:'Accompagnement',category:'vendu'},
+  {clientName:'Bayer',entity:'Gulfstream Communication',code:'DGWHY0141',master:'',name:'Site Web',category:'vendu'},
+  {clientName:'Cipa',entity:'Gulfstream Communication',code:'DGCO0218',master:'',name:'Refonte Ecosysteme',category:'vendu'},
+  {clientName:'Cipc',entity:'Gulfstream Communication',code:'DGGUL2869',master:'',name:'Carte Volaillissime',category:'vendu'},
+  {clientName:'Civb',entity:'Gulfstream Communication',code:'DGGUL3067',master:'',name:'Tournee 2026',category:'vendu'},
+  {clientName:'CNC',entity:'Digital Garden',code:'DGCNCIA0001',master:'',name:'AO CNC',category:'vendu'},
+  {clientName:'MODEAL',entity:'Gulfstream Communication',code:'DGGSCM0003',master:'',name:'Refonte Globale',category:'vendu'},
+  {clientName:'Pasquier',entity:'Digital Garden',code:'DGPAS0004',master:'',name:'Refonte Pasquier.fr',category:'vendu'},
+  {clientName:'Pasquier',entity:'Digital Garden',code:'DGPAS0005',master:'',name:'QRCODE',category:'vendu'},
+  {clientName:'Pasquier',entity:'Digital Garden',code:'DGPAS0006',master:'',name:'Shopify',category:'vendu'},
+  {clientName:'Tedxmontmartre',entity:'Digital Garden',code:'DGTEDX0003',master:'',name:'Site Web',category:'vendu'},
+  {clientName:'AOP Beurre',entity:'Gulfstream Communication',code:'DGGUL3088',master:'',name:'Enjoy',category:'vendu'},
+  {clientName:'AOP Poulet Bourbensais',entity:'Gulfstream Communication',code:'GSSYVOFA0002',master:'',name:'Reprise site',category:'vendu'},
+];
+
+function init(){
+  loadState();
+  if(!state.clients.length) state.clients=DEFAULT_CLIENTS;
+  if(!state.projects.length) state.projects=DEFAULT_PROJECTS;
+  // Migrate old format
+  state.projects.forEach(p=>{ if(!p.clientName&&p.client){p.clientName=p.client;delete p.client;} if(p.master===undefined) p.master=''; });
+  if(!state.monthProjects) state.monthProjects={};
+  saveState();
+  updateGhStatusDot();
+  renderTimesheet();
+}
+init();
+</script>
+
+<!-- MODAL GITHUB CONFIG -->
+<div class="modal-overlay" id="modalGhConfig">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Configuration GitHub</span>
+      <button class="modal-close" onclick="closeModal('modalGhConfig')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Personal Access Token</label>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px">
+          GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)<br>
+          Droits requis : <code>repo</code>
+        </div>
+        <input class="form-input" id="ghToken" type="password" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Repo (owner/nom)</label>
+        <input class="form-input" id="ghRepo" type="text" placeholder="gbourdeauGS/twopub" value="gbourdeauGS/twopub">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fichier de sauvegarde</label>
+        <input class="form-input" id="ghFile" type="text" placeholder="saves/temps-2026.json" value="saves/temps-2026.json">
+      </div>
+      <div id="ghConfigError" style="font-size:12px;color:var(--red);min-height:16px;margin-top:4px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modalGhConfig')">Annuler</button>
+      <button class="btn btn-secondary" onclick="ghTestConnection()">Tester la connexion</button>
+      <button class="btn btn-primary" onclick="saveGhConfig()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
