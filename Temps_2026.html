@@ -742,7 +742,7 @@ function renderTimesheet(){
   // — Day totals row —
   const grandTotal=monthTotal(monthk,true,activePksSet);
   bd+=`<tr class="day-total-row"><td colspan="5"><div class="cell-text" style="color:var(--text3);font-size:11px;text-align:right;padding-right:8px">Total / jour</div></td>`;
-  bd+=`<td class="total-cell" style="font-size:11px;color:var(--text3)">${fmtH(grandTotal)}</td>`;
+  bd+=`<td class="total-cell" data-grandtotal style="font-size:11px;color:var(--text3)">${fmtH(grandTotal)}</td>`;
   for(let d=1;d<=days;d++){
     if(wStarts.has(d)){
       const wIdx=weekIdxOfDay(y,m,d,wRanges);
@@ -754,7 +754,7 @@ function renderTimesheet(){
     const dt=dayTotal(monthk,d,false,activePksSet), cap=dayCap(y,m,d), we=isWE(y,m,d);
     let style='color:var(--text3)';
     if(!we&&dt>0){ if(dt>cap) style='color:var(--red)'; else if(dt===cap) style='color:var(--accent)'; else style='color:var(--orange)'; }
-    bd+=`<td><div class="day-total-val" style="${style}">${dt>0?fmtH(dt):''}</div></td>`;
+    bd+=`<td data-totalday="${d}"><div class="day-total-val" style="${style}">${dt>0?fmtH(dt):''}</div></td>`;
   }
   bd+=`</tr>`;
 
@@ -879,13 +879,14 @@ function updateDayTotalCol(day){
   const dt=dayTotal(monthk,day,false,activePksSet), cap=dayCap(y,m,day), we=isWE(y,m,day);
   let style='color:var(--text3)';
   if(!we&&dt>0){ if(dt>cap) style='color:var(--red)'; else if(dt===cap) style='color:var(--accent)'; else style='color:var(--orange)'; }
+  // Cibler la cellule par data-day plutôt que par index (les colonnes semaine décalent les indices)
   const trow=document.querySelector('.day-total-row');
   if(!trow) return;
-  const cells=trow.querySelectorAll('td');
-  // cells[0]=label(colspan5), cells[1]=grandtotal, cells[2..]=days
-  if(cells[1+day]) cells[1+day].innerHTML=`<div class="day-total-val" style="${style}">${dt>0?fmtH(dt):''}</div>`;
+  const dayCell=trow.querySelector(`[data-totalday="${day}"]`);
+  if(dayCell) dayCell.innerHTML=`<div class="day-total-val" style="${style}">${dt>0?fmtH(dt):''}</div>`;
   const gt=monthTotal(monthk,true,activePksSet);
-  if(cells[1]) cells[1].textContent=fmtH(gt);
+  const gtCell=trow.querySelector('[data-grandtotal]');
+  if(gtCell) gtCell.textContent=fmtH(gt);
 }
 
 function updateStats(){
