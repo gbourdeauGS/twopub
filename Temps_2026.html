@@ -457,6 +457,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 // STATE
 // ══════════════════════════════════════════════════
 const STORAGE_KEY = 'temps_v3';
+const APP_VERSION = '1.4.0';
 const ENTITIES = ['Gulfstream Communication','Digital Garden','Clic Clac','Connect','Gulfstream Activation','Gulfstream RP'];
 const KEY_CONGES = '__CONGES__';
 const KEY_FERIES = '__FERIES__';
@@ -523,19 +524,18 @@ function setH(monthk,pkey,day,val){
   saveState();
 }
 function projTotal(monthk,pkey){ return Object.values(state.timeData[monthk]?.[pkey]||{}).reduce((a,b)=>a+b,0); }
-function dayTotal(monthk,day,excl=false){
-  const activePks=new Set(getMonthPks(monthk));
+function dayTotal(monthk,day,excl=false,activePks=null){
+  if(!activePks) activePks=new Set(state.monthProjects[monthk]||[]);
   let t=0;
   for(const k in (state.timeData[monthk]||{})){
     if(excl&&(k===KEY_CONGES||k===KEY_FERIES)) continue;
-    // exclude keys that are not absence and not in active month projects
     if(k!==KEY_CONGES&&k!==KEY_FERIES&&!activePks.has(k)) continue;
     t+=state.timeData[monthk][k][day]||0;
   }
   return t;
 }
-function monthTotal(monthk,excl=false){
-  const activePks=new Set(getMonthPks(monthk));
+function monthTotal(monthk,excl=false,activePks=null){
+  if(!activePks) activePks=new Set(state.monthProjects[monthk]||[]);
   let t=0;
   for(const k in (state.timeData[monthk]||{})){
     if(excl&&(k===KEY_CONGES||k===KEY_FERIES)) continue;
@@ -633,7 +633,7 @@ function sortProjs(arr){
 // ══════════════════════════════════════════════════
 // DAY COLOR
 // ══════════════════════════════════════════════════
-function dayColorCls(y,m,d,monthk){
+function dayColorCls(y,m,d,monthk,activePksSet=null){
   if(isWE(y,m,d)) return '';
   const cap=dayCap(y,m,d);
   const conges=getH(monthk,KEY_CONGES,d);
@@ -641,7 +641,7 @@ function dayColorCls(y,m,d,monthk){
   const absTotal=conges+feries;
   if(absTotal>=cap) return ''; // full absence, no color
   const effCap=cap-absTotal;
-  const billable=dayTotal(monthk,d,true);
+  const billable=dayTotal(monthk,d,true,activePksSet);
   if(billable===0) return '';
   const pct=billable/effCap;
   if(pct>=1) return 'day-green';
@@ -660,9 +660,12 @@ function renderTimesheet(){
   document.getElementById('monthLabel').textContent=`${MFR[m]} ${y}`;
   document.getElementById('collabName').value=state.collaborateur;
 
+  // Precompute active pks ONCE to avoid side-effects in getMonthPks during render
+  const activePksSet=new Set(getMonthPks(monthk));
+
   // Precompute day colors
   const dcs={};
-  for(let d=1;d<=days;d++) dcs[d]=dayColorCls(y,m,d,monthk);
+  for(let d=1;d<=days;d++) dcs[d]=dayColorCls(y,m,d,monthk,activePksSet);
 
   // HEADER ROW
   const wStarts=weekStartDays(y,m);
@@ -737,7 +740,7 @@ function renderTimesheet(){
   </td></tr>`;
 
   // — Day totals row —
-  const grandTotal=monthTotal(monthk,true);
+  const grandTotal=monthTotal(monthk,true,activePksSet);
   bd+=`<tr class="day-total-row"><td colspan="5"><div class="cell-text" style="color:var(--text3);font-size:11px;text-align:right;padding-right:8px">Total / jour</div></td>`;
   bd+=`<td class="total-cell" style="font-size:11px;color:var(--text3)">${fmtH(grandTotal)}</td>`;
   for(let d=1;d<=days;d++){
@@ -745,10 +748,10 @@ function renderTimesheet(){
       const wIdx=weekIdxOfDay(y,m,d,wRanges);
       const range=wRanges[wIdx];
       let wt=0;
-      for(let wd=range.start;wd<=range.end;wd++) wt+=dayTotal(monthk,wd);
+      for(let wd=range.start;wd<=range.end;wd++) wt+=dayTotal(monthk,wd,false,activePksSet);
       bd+=`<td class="week-total-cell ${wt>0?'':'empty'}" style="font-size:11px;${wt>0?'color:var(--text2)':'color:var(--text3)'}">${wt>0?fmtH(wt):''}</td>`;
     }
-    const dt=dayTotal(monthk,d), cap=dayCap(y,m,d), we=isWE(y,m,d);
+    const dt=dayTotal(monthk,d,false,activePksSet), cap=dayCap(y,m,d), we=isWE(y,m,d);
     let style='color:var(--text3)';
     if(!we&&dt>0){ if(dt>cap) style='color:var(--red)'; else if(dt===cap) style='color:var(--accent)'; else style='color:var(--orange)'; }
     bd+=`<td><div class="day-total-val" style="${style}">${dt>0?fmtH(dt):''}</div></td>`;
@@ -860,7 +863,8 @@ function updateDayLocks(day){
 
 function recolorDay(day){
   const {currentYear:y,currentMonth:m}=state, monthk=mk();
-  const cls=dayColorCls(y,m,day,monthk);
+  const activePksSet=new Set(state.monthProjects[monthk]||[]);
+  const cls=dayColorCls(y,m,day,monthk,activePksSet);
   document.querySelectorAll(`[data-day="${day}"]`).forEach(inp=>{
     const td=inp.parentElement;
     // Don't color absence rows
@@ -871,7 +875,8 @@ function recolorDay(day){
 
 function updateDayTotalCol(day){
   const {currentYear:y,currentMonth:m}=state, monthk=mk();
-  const dt=dayTotal(monthk,day), cap=dayCap(y,m,day), we=isWE(y,m,day);
+  const activePksSet=new Set(state.monthProjects[monthk]||[]);
+  const dt=dayTotal(monthk,day,false,activePksSet), cap=dayCap(y,m,day), we=isWE(y,m,day);
   let style='color:var(--text3)';
   if(!we&&dt>0){ if(dt>cap) style='color:var(--red)'; else if(dt===cap) style='color:var(--accent)'; else style='color:var(--orange)'; }
   const trow=document.querySelector('.day-total-row');
@@ -879,13 +884,14 @@ function updateDayTotalCol(day){
   const cells=trow.querySelectorAll('td');
   // cells[0]=label(colspan5), cells[1]=grandtotal, cells[2..]=days
   if(cells[1+day]) cells[1+day].innerHTML=`<div class="day-total-val" style="${style}">${dt>0?fmtH(dt):''}</div>`;
-  const gt=monthTotal(monthk,true);
+  const gt=monthTotal(monthk,true,activePksSet);
   if(cells[1]) cells[1].textContent=fmtH(gt);
 }
 
 function updateStats(){
   const {currentYear:y,currentMonth:m}=state, monthk=mk();
-  const tot=monthTotal(monthk,true);
+  const activePksSet=new Set(state.monthProjects[monthk]||[]);
+  const tot=monthTotal(monthk,true,activePksSet);
   const workH=monthWorkH(y,m), workDays=monthWorkDays(y,m);
   const rem=workH-tot;
   document.getElementById('statTotal').textContent=fmtH(tot);
@@ -1404,6 +1410,8 @@ function updateReglagesView(){
   const connEl = document.getElementById('rg-account-connected');
   const discEl = document.getElementById('rg-account-disconnected');
   if(!connEl) return;
+  const vEl = document.getElementById('rg-version');
+  if(vEl) vEl.textContent = APP_VERSION;
   if(_sbUser){
     connEl.style.display='';
     discEl.style.display='none';
@@ -1550,7 +1558,7 @@ init();
       <div style="font-size:12px;color:var(--text3);margin-bottom:16px;">Informations sur l'application</div>
       <table style="width:100%;font-size:12px;border-collapse:collapse;">
         <tr><td style="padding:6px 0;color:var(--text3);width:140px;">Application</td><td style="color:var(--text);font-weight:500;">Temps 2026 — Suivi mensuel</td></tr>
-        <tr><td style="padding:6px 0;color:var(--text3);">Version</td><td style="font-family:var(--mono);color:var(--accent);">temps_v3</td></tr>
+        <tr><td style="padding:6px 0;color:var(--text3);">Version</td><td style="font-family:var(--mono);color:var(--accent);" id="rg-version"></td></tr>
         <tr><td style="padding:6px 0;color:var(--text3);">Stockage local</td><td style="font-family:var(--mono);color:var(--text2);">localStorage · temps_v3</td></tr>
         <tr><td style="padding:6px 0;color:var(--text3);">Stockage cloud</td><td style="font-family:var(--mono);color:var(--text2);">Supabase · table saves</td></tr>
       </table>
