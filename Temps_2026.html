@@ -524,17 +524,22 @@ function setH(monthk,pkey,day,val){
 }
 function projTotal(monthk,pkey){ return Object.values(state.timeData[monthk]?.[pkey]||{}).reduce((a,b)=>a+b,0); }
 function dayTotal(monthk,day,excl=false){
+  const activePks=new Set(getMonthPks(monthk));
   let t=0;
   for(const k in (state.timeData[monthk]||{})){
     if(excl&&(k===KEY_CONGES||k===KEY_FERIES)) continue;
+    // exclude keys that are not absence and not in active month projects
+    if(k!==KEY_CONGES&&k!==KEY_FERIES&&!activePks.has(k)) continue;
     t+=state.timeData[monthk][k][day]||0;
   }
   return t;
 }
 function monthTotal(monthk,excl=false){
+  const activePks=new Set(getMonthPks(monthk));
   let t=0;
   for(const k in (state.timeData[monthk]||{})){
     if(excl&&(k===KEY_CONGES||k===KEY_FERIES)) continue;
+    if(k!==KEY_CONGES&&k!==KEY_FERIES&&!activePks.has(k)) continue;
     for(const d in state.timeData[monthk][k]) t+=state.timeData[monthk][k][d];
   }
   return t;
