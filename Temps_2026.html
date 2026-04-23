@@ -749,10 +749,10 @@ function renderTimesheet(){
       const wIdx=weekIdxOfDay(y,m,d,wRanges);
       const range=wRanges[wIdx];
       let wt=0;
-      for(let wd=range.start;wd<=range.end;wd++) wt+=dayTotal(monthk,wd,false,activePksSet);
+      for(let wd=range.start;wd<=range.end;wd++) wt+=dayTotal(monthk,wd,true,activePksSet);
       bd+=`<td class="week-total-cell ${wt>0?'':'empty'}" style="font-size:11px;${wt>0?'color:var(--text2)':'color:var(--text3)'}">${wt>0?fmtH(wt):''}</td>`;
     }
-    const dt=dayTotal(monthk,d,false,activePksSet), cap=dayCap(y,m,d), we=isWE(y,m,d);
+    const dt=dayTotal(monthk,d,true,activePksSet), cap=dayCap(y,m,d), we=isWE(y,m,d);
     let style='color:var(--text3)';
     if(!we&&dt>0){ if(dt>cap) style='color:var(--red)'; else if(dt===cap) style='color:var(--accent)'; else style='color:var(--orange)'; }
     bd+=`<td data-totalday="${d}"><div class="day-total-val" style="${style}">${dt>0?fmtH(dt):''}</div></td>`;
@@ -864,7 +864,7 @@ function updateDayLocks(day){
 
 function recolorDay(day){
   const {currentYear:y,currentMonth:m}=state, monthk=mk();
-  const activePksSet=new Set(state.monthProjects[monthk]||[]);
+  const activePksSet=new Set(state.monthProjects[monthk]||getMonthPks(monthk));
   const cls=dayColorCls(y,m,day,monthk,activePksSet);
   document.querySelectorAll(`[data-day="${day}"]`).forEach(inp=>{
     const td=inp.parentElement;
@@ -876,11 +876,10 @@ function recolorDay(day){
 
 function updateDayTotalCol(day){
   const {currentYear:y,currentMonth:m}=state, monthk=mk();
-  const activePksSet=new Set(state.monthProjects[monthk]||[]);
-  const dt=dayTotal(monthk,day,false,activePksSet), cap=dayCap(y,m,day), we=isWE(y,m,day);
+  const activePksSet=new Set(state.monthProjects[monthk]||getMonthPks(monthk));
+  const dt=dayTotal(monthk,day,true,activePksSet), cap=dayCap(y,m,day), we=isWE(y,m,day);
   let style='color:var(--text3)';
   if(!we&&dt>0){ if(dt>cap) style='color:var(--red)'; else if(dt===cap) style='color:var(--accent)'; else style='color:var(--orange)'; }
-  // Cibler la cellule par data-day plutôt que par index (les colonnes semaine décalent les indices)
   const trow=document.querySelector('.day-total-row');
   if(!trow) return;
   const dayCell=trow.querySelector(`[data-totalday="${day}"]`);
@@ -892,7 +891,7 @@ function updateDayTotalCol(day){
 
 function updateStats(){
   const {currentYear:y,currentMonth:m}=state, monthk=mk();
-  const activePksSet=new Set(state.monthProjects[monthk]||[]);
+  const activePksSet=new Set(state.monthProjects[monthk]||getMonthPks(monthk));
   const tot=monthTotal(monthk,true,activePksSet);
   const workH=monthWorkH(y,m), workDays=monthWorkDays(y,m);
   const rem=workH-tot;
