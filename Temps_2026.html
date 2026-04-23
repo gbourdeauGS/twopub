@@ -203,6 +203,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 .tag{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;font-family:var(--sans);}
 .tag-interne{background:rgba(91,79,255,0.08);color:var(--accent);border:1px solid rgba(91,79,255,0.2);}
 .tag-vendu{background:rgba(45,204,112,0.1);color:var(--green);border:1px solid rgba(45,204,112,0.25);}
+.tag-ao{background:rgba(224,122,48,0.1);color:var(--orange);border:1px solid rgba(224,122,48,0.25);}
 .tag-autre{background:var(--surface3);color:var(--text3);border:1px solid var(--border);}
 .collab-header{display:flex;align-items:center;gap:8px;margin-bottom:20px;padding:12px 20px;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-sm);}
 .collab-name-input{background:transparent;border:none;font-family:var(--display);font-weight:700;font-size:15px;color:var(--text);cursor:text;flex:1;}
@@ -457,7 +458,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 // STATE
 // ══════════════════════════════════════════════════
 const STORAGE_KEY = 'temps_v3';
-const APP_VERSION = '1.4.1';
+const APP_VERSION = '1.5.0';
 const ENTITIES = ['Gulfstream Communication','Digital Garden','Clic Clac','Connect','Gulfstream Activation','Gulfstream RP'];
 const KEY_CONGES = '__CONGES__';
 const KEY_FERIES = '__FERIES__';
@@ -927,8 +928,11 @@ function openAddMonthProject(){
 function filterAddMonthList(){
   const monthk=mk();
   const activePks=getMonthPks(monthk);
+  const archivedClients=new Set(state.clients.filter(c=>c.archived).map(c=>c.name));
   const q=document.getElementById('addMonthSearch').value.toLowerCase();
   const available=state.projects.filter(p=>{
+    if(p.archived) return false;
+    if(archivedClients.has(p.clientName)) return false;
     const alreadyIn=activePks.includes(pk(p));
     if(alreadyIn) return false;
     if(!q) return true;
@@ -986,15 +990,27 @@ function entityPill(e){
 // CLIENTS
 // ══════════════════════════════════════════════════
 function renderClients(){
-  if(!state.clients.length){
+  const active=state.clients.filter(c=>!c.archived).sort((a,b)=>a.name.localeCompare(b.name));
+  const archived=state.clients.filter(c=>c.archived).sort((a,b)=>a.name.localeCompare(b.name));
+  let html='';
+  if(!active.length && !archived.length){
     document.getElementById('clientsBody').innerHTML=`<tr><td colspan="3"><div class="empty-state"><div class="icon">◈</div><p>Aucun client</p></div></td></tr>`;
     return;
   }
-  const sorted=[...state.clients].sort((a,b)=>a.name.localeCompare(b.name));
-  document.getElementById('clientsBody').innerHTML=sorted.map(c=>{
-    const i=state.clients.indexOf(c);
-    return `<tr><td>${c.name}</td><td>${entityPill(c.entity)}</td><td style="display:flex;gap:6px;padding:6px 14px"><button class="btn btn-secondary" style="padding:4px 10px;font-size:11px" onclick="editClient(${i})">✎</button><button class="btn btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteClient(${i})">✕</button></td></tr>`;
-  }).join('');
+  if(active.length){
+    html+=active.map(c=>{
+      const i=state.clients.indexOf(c);
+      return `<tr><td>${c.name}</td><td>${entityPill(c.entity)}</td><td style="display:flex;gap:6px;padding:6px 14px"><button class="btn btn-secondary" style="padding:4px 10px;font-size:11px" onclick="editClient(${i})">✎</button><button class="btn btn-secondary" style="padding:4px 10px;font-size:11px;color:var(--orange)" onclick="archiveClient(${i})" title="Archiver ce client (archive aussi ses projets)">⊘ Archiver</button></td></tr>`;
+    }).join('');
+  }
+  if(archived.length){
+    html+=`<tr><td colspan="3" style="background:var(--surface2);padding:8px 14px;font-family:var(--sans);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text3)">Archivés</td></tr>`;
+    html+=archived.map(c=>{
+      const i=state.clients.indexOf(c);
+      return `<tr style="opacity:0.6"><td style="text-decoration:line-through;color:var(--text3)">${c.name}</td><td>${entityPill(c.entity)}</td><td style="display:flex;gap:6px;padding:6px 14px"><button class="btn btn-secondary" style="padding:4px 10px;font-size:11px;color:var(--green)" onclick="unarchiveClient(${i})" title="Désarchiver">↩ Désarchiver</button></td></tr>`;
+    }).join('');
+  }
+  document.getElementById('clientsBody').innerHTML=html;
 }
 let editingCIdx=null;
 function openAddClient(){ editingCIdx=null; document.getElementById('modalClientTitle').textContent='Nouveau client'; document.getElementById('cName').value=''; document.getElementById('cEntity').value='Gulfstream Communication'; openModal('modalClient'); }
@@ -1005,7 +1021,9 @@ function saveClient(){
   if(!name){ toast('Nom requis','error'); return; }
   if(editingCIdx!==null){
     const old=state.clients[editingCIdx].name;
+    const wasArchived=state.clients[editingCIdx].archived;
     state.clients[editingCIdx]={name,entity};
+    if(wasArchived) state.clients[editingCIdx].archived=true;
     state.projects.forEach(p=>{ if(p.clientName===old){p.clientName=name;p.entity=entity;} });
     toast('Client modifié');
   } else {
@@ -1015,10 +1033,21 @@ function saveClient(){
   }
   saveState(); closeModal('modalClient'); renderClients();
 }
-function deleteClient(i){
-  if(!confirm(`Supprimer "${state.clients[i].name}" ?`)) return;
-  state.clients.splice(i,1);
-  saveState(); renderClients(); toast('Client supprimé');
+function archiveClient(i){
+  const clientName=state.clients[i].name;
+  const linkedProjects=state.projects.filter(p=>p.clientName===clientName&&!p.archived);
+  const msg=linkedProjects.length
+    ? `Archiver "${clientName}" ? Ses ${linkedProjects.length} projet(s) actif(s) seront également archivés.`
+    : `Archiver "${clientName}" ?`;
+  if(!confirm(msg)) return;
+  state.clients[i].archived=true;
+  // Archiver tous les projets du client
+  state.projects.forEach(p=>{ if(p.clientName===clientName) p.archived=true; });
+  saveState(); renderClients(); toast(`Client "${clientName}" archivé`);
+}
+function unarchiveClient(i){
+  state.clients[i].archived=false;
+  saveState(); renderClients(); toast('Client désarchivé');
 }
 
 // ══════════════════════════════════════════════════
@@ -1028,7 +1057,7 @@ function populateClientSel(){
   const sel=document.getElementById('pClient');
   const cur=sel.value;
   sel.innerHTML='<option value="">— Sélectionner —</option>';
-  [...state.clients].sort((a,b)=>a.name.localeCompare(b.name)).forEach(c=>{
+  [...state.clients].filter(c=>!c.archived).sort((a,b)=>a.name.localeCompare(b.name)).forEach(c=>{
     const o=document.createElement('option'); o.value=c.name; o.textContent=c.name; sel.appendChild(o);
   });
   sel.value=cur;
@@ -1040,12 +1069,13 @@ function onClientChange(){
 }
 function renderProjects(filter=''){
   const q=filter.toLowerCase();
-  const projs=sortProjs(state.projects.filter(p=>!q||(p.clientName||'').toLowerCase().includes(q)||(p.code||'').toLowerCase().includes(q)||(p.name||'').toLowerCase().includes(q)||(p.master||'').toLowerCase().includes(q)));
-  const catL={vendu:'Vendu',interne:'Interne',autre:'Autre'}, catC={vendu:'tag-vendu',interne:'tag-interne',autre:'tag-autre'};
-  if(!projs.length){ document.getElementById('projectsBody').innerHTML=`<tr><td colspan="7"><div class="empty-state"><div class="icon">◈</div><p>Aucun projet</p></div></td></tr>`; return; }
-  document.getElementById('projectsBody').innerHTML=projs.map(p=>{
+  const matches=p=>!q||(p.clientName||'').toLowerCase().includes(q)||(p.code||'').toLowerCase().includes(q)||(p.name||'').toLowerCase().includes(q)||(p.master||'').toLowerCase().includes(q);
+  const active=sortProjs(state.projects.filter(p=>!p.archived&&matches(p)));
+  const archived=sortProjs(state.projects.filter(p=>p.archived&&matches(p)));
+  const catL={vendu:'Vendu',interne:'Interne',ao:'AO',autre:'Autre'}, catC={vendu:'tag-vendu',interne:'tag-interne',ao:'tag-ao',autre:'tag-autre'};
+  const projRow=(p,extra='')=>{
     const i=state.projects.indexOf(p);
-    return `<tr>
+    return `<tr${extra}>
       <td>${entityPill(p.entity)}</td>
       <td>${p.clientName||'—'}</td>
       <td><span class="code-badge">${p.code}</span></td>
@@ -1053,10 +1083,23 @@ function renderProjects(filter=''){
       <td>${p.name}</td>
       <td><span class="tag ${catC[p.category]||'tag-autre'}">${catL[p.category]||p.category}</span></td>
       <td style="display:flex;gap:6px;padding:6px 14px">
-        <button class="btn btn-secondary" style="padding:4px 10px;font-size:11px" onclick="editProject(${i})">✎</button>
-        <button class="btn btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteProject(${i})">✕</button>
+        ${p.archived
+          ? `<button class="btn btn-secondary" style="padding:4px 10px;font-size:11px;color:var(--green)" onclick="unarchiveProject(${i})" title="Désarchiver">↩</button>`
+          : `<button class="btn btn-secondary" style="padding:4px 10px;font-size:11px" onclick="editProject(${i})">✎</button>
+             <button class="btn btn-secondary" style="padding:4px 10px;font-size:11px;color:var(--orange)" onclick="archiveProject(${i})" title="Archiver">⊘</button>`
+        }
       </td></tr>`;
-  }).join('');
+  };
+  if(!active.length && !archived.length){
+    document.getElementById('projectsBody').innerHTML=`<tr><td colspan="7"><div class="empty-state"><div class="icon">◈</div><p>Aucun projet</p></div></td></tr>`;
+    return;
+  }
+  let html=active.map(p=>projRow(p)).join('');
+  if(archived.length){
+    html+=`<tr><td colspan="7" style="background:var(--surface2);padding:8px 14px;font-family:var(--sans);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text3)">Archivés</td></tr>`;
+    html+=archived.map(p=>projRow(p,' style="opacity:0.55"')).join('');
+  }
+  document.getElementById('projectsBody').innerHTML=html;
 }
 function filterProjects(){ renderProjects(document.getElementById('projectSearch').value); }
 let editingPIdx=null;
@@ -1082,11 +1125,41 @@ function saveProject(){
   const category=document.getElementById('pCategory').value;
   if(!code||!name){ toast('Code et nom requis','error'); return; }
   const proj={clientName,entity,code,master,name,category};
-  if(editingPIdx!==null){ state.projects[editingPIdx]=proj; toast('Projet modifié'); }
-  else{ state.projects.push(proj); toast('Projet ajouté'); }
+  if(editingPIdx!==null){
+    const oldProj=state.projects[editingPIdx];
+    const oldPk=pk(oldProj);
+    const newPk=pk(proj);
+    state.projects[editingPIdx]=proj;
+    if(oldPk!==newPk){
+      for(const monthk in state.monthProjects){
+        const idx=state.monthProjects[monthk].indexOf(oldPk);
+        if(idx>-1) state.monthProjects[monthk][idx]=newPk;
+      }
+      for(const monthk in state.timeData){
+        if(state.timeData[monthk][oldPk]!==undefined){
+          state.timeData[monthk][newPk]=state.timeData[monthk][oldPk];
+          delete state.timeData[monthk][oldPk];
+        }
+      }
+    }
+    toast('Projet modifié');
+  } else {
+    state.projects.push(proj);
+    toast('Projet ajouté');
+  }
   saveState(); closeModal('modalProject'); renderProjects();
 }
-function deleteProject(i){ if(!confirm(`Supprimer "${state.projects[i].name}" ?`)) return; state.projects.splice(i,1); saveState(); renderProjects(); toast('Projet supprimé'); }
+function archiveProject(i){
+  state.projects[i].archived=true;
+  const pkey=pk(state.projects[i]);
+  // Retirer des listes de projets de tous les mois futurs non encore saisis
+  // (on conserve dans les mois déjà saisis)
+  saveState(); renderProjects(); toast('Projet archivé');
+}
+function unarchiveProject(i){
+  delete state.projects[i].archived;
+  saveState(); renderProjects(); toast('Projet désarchivé');
+}
 function openImportProjects(){ document.getElementById('importTsv').value=''; openModal('modalImport'); }
 function importTsv(){
   const raw=document.getElementById('importTsv').value.trim(); if(!raw) return;
@@ -1113,18 +1186,28 @@ function renderDashboard(){
   document.getElementById('dashMonthLabel').textContent=`${MFR[m]} ${y}`;
   const activePksSet=new Set(state.monthProjects[monthk]||getMonthPks(monthk));
   const tot=monthTotal(monthk,true,activePksSet), workH=monthWorkH(y,m), pct=workH?Math.round(tot/workH*100):0;
-  const actProjs=getMonthProjects(monthk).filter(p=>projTotal(monthk,pk(p))>0);
+  // Projets actifs du mois (y compris archivés) ayant des heures saisies
+  const monthProjs=getMonthProjects(monthk);
+  const actProjs=monthProjs.filter(p=>projTotal(monthk,pk(p))>0);
+  const totalProjects=state.projects.filter(p=>!p.archived).length;
   document.getElementById('dashKpis').innerHTML=`
     <div class="kpi-card"><div class="kpi-label">Heures saisies</div><div class="kpi-value accent">${fmtH(tot)}</div><div class="kpi-sub">sur ${fmtH(workH)} attendues</div></div>
     <div class="kpi-card"><div class="kpi-label">Complétion</div><div class="kpi-value ${pct>=100?'accent':pct>=75?'':'warn'}">${pct}%</div><div class="kpi-sub">${monthWorkDays(y,m)} jours ouvrés</div></div>
-    <div class="kpi-card"><div class="kpi-label">Projets actifs</div><div class="kpi-value">${actProjs.length}</div><div class="kpi-sub">sur ${state.projects.length} projets</div></div>
+    <div class="kpi-card"><div class="kpi-label">Projets actifs</div><div class="kpi-value">${actProjs.length}</div><div class="kpi-sub">sur ${totalProjects} projets actifs</div></div>
     <div class="kpi-card"><div class="kpi-label">Reste à saisir</div><div class="kpi-value ${tot>=workH?'accent':'warn'}">${tot>=workH?'✓':fmtH(workH-tot)}</div><div class="kpi-sub">${tot>=workH?'Complet !':'à compléter'}</div></div>`;
+  // Répartition par client — itère uniquement sur les projets actifs du mois avec des heures
   const cmap={};
-  for(const p of state.projects){ const h=projTotal(monthk,pk(p)); if(!h) continue; if(!cmap[p.clientName]) cmap[p.clientName]={hours:0,projects:0,entity:p.entity}; cmap[p.clientName].hours+=h; cmap[p.clientName].projects++; }
+  for(const p of actProjs){
+    const h=projTotal(monthk,pk(p));
+    if(!h) continue;
+    if(!cmap[p.clientName]) cmap[p.clientName]={hours:0,projects:0,entity:p.entity};
+    cmap[p.clientName].hours+=h;
+    cmap[p.clientName].projects++;
+  }
   const csorted=Object.entries(cmap).sort((a,b)=>b[1].hours-a[1].hours);
   const maxH=csorted[0]?.[1].hours||1;
   document.getElementById('dashBreakdownBody').innerHTML=csorted.map(([c,d])=>`<tr><td>${c}</td><td>${entityPill(d.entity)}</td><td style="color:var(--text3)">${d.projects} projet(s)</td><td style="color:var(--accent);font-weight:500">${fmtH(d.hours)}</td><td class="bar-cell"><div class="bar-wrap"><div class="bar-fill" style="width:${Math.round(d.hours/maxH*100)}%"></div></div></td></tr>`).join('')||'<tr><td colspan="5" style="color:var(--text3);text-align:center;padding:20px">Aucune donnée</td></tr>';
-  document.getElementById('dashProjectsBody').innerHTML=sortProjs(actProjs).map(p=>`<tr><td>${p.name}</td><td><span class="code-badge">${p.code}</span></td><td>${p.master?`<span class="master-badge">${p.master}</span>`:'—'}</td><td style="color:var(--text2)">${p.clientName}</td><td style="color:var(--accent);font-weight:500">${fmtH(projTotal(monthk,pk(p)))}</td></tr>`).join('')||'<tr><td colspan="5" style="color:var(--text3);text-align:center;padding:20px">Aucun projet actif</td></tr>';
+  document.getElementById('dashProjectsBody').innerHTML=sortProjs(actProjs).map(p=>`<tr><td>${p.name}${p.archived?` <span style="font-size:9px;color:var(--text3);font-family:var(--sans)">[archivé]</span>`:''}</td><td><span class="code-badge">${p.code}</span></td><td>${p.master?`<span class="master-badge">${p.master}</span>`:'—'}</td><td style="color:var(--text2)">${p.clientName}</td><td style="color:var(--accent);font-weight:500">${fmtH(projTotal(monthk,pk(p)))}</td></tr>`).join('')||'<tr><td colspan="5" style="color:var(--text3);text-align:center;padding:20px">Aucun projet actif</td></tr>';
 }
 
 // ══════════════════════════════════════════════════
