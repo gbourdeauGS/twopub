@@ -458,7 +458,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 // STATE
 // ══════════════════════════════════════════════════
 const STORAGE_KEY = 'temps_v3';
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.5.1';
 const ENTITIES = ['Gulfstream Communication','Digital Garden','Clic Clac','Connect','Gulfstream Activation','Gulfstream RP'];
 const KEY_CONGES = '__CONGES__';
 const KEY_FERIES = '__FERIES__';
@@ -1563,6 +1563,25 @@ const DEFAULT_PROJECTS=[
   {clientName:'AOP Poulet Bourbensais',entity:'Gulfstream Communication',code:'GSSYVOFA0002',master:'',name:'Reprise site',category:'vendu'},
 ];
 
+function purgeGhostPks(){
+  // Nettoie les pkeys qui n'existent plus dans state.projects
+  // (projets renommés, supprimés, ou importés avec un ancien format)
+  const validPks=new Set(state.projects.map(p=>pk(p)));
+  let dirty=false;
+  Object.keys(state.monthProjects).forEach(monthk=>{
+    const before=state.monthProjects[monthk].length;
+    state.monthProjects[monthk]=state.monthProjects[monthk].filter(k=>validPks.has(k));
+    if(state.monthProjects[monthk].length!==before) dirty=true;
+  });
+  Object.keys(state.timeData).forEach(monthk=>{
+    Object.keys(state.timeData[monthk]).forEach(k=>{
+      if(k===KEY_CONGES||k===KEY_FERIES) return;
+      if(!validPks.has(k)){ delete state.timeData[monthk][k]; dirty=true; }
+    });
+  });
+  if(dirty) saveState();
+}
+
 function init(){
   loadState();
   if(!state.clients.length) state.clients=DEFAULT_CLIENTS;
@@ -1570,6 +1589,8 @@ function init(){
   // Migrate old format
   state.projects.forEach(p=>{ if(!p.clientName&&p.client){p.clientName=p.client;delete p.client;} if(p.master===undefined) p.master=''; });
   if(!state.monthProjects) state.monthProjects={};
+  // Purge pkeys fantômes (projets renommés ou supprimés)
+  purgeGhostPks();
   saveState();
   renderTimesheet();
   sbInit();
